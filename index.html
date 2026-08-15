@@ -1,128 +1,14 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Portal del Restaurante</title>
-    <link rel="stylesheet" href="style.css">
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;700;800&display=swap" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-</head>
-<body>
-    <div class="ambient-glow">
-        <div class="glow glow-1"></div>
-        <div class="glow glow-2"></div>
-    </div>
-
-    <!-- PANTALLA DE ACCESO (LOGIN) -->
-    <div id="loginScreen" class="overlay active">
-        <div class="card glass login-box">
-            <div class="header-text">
-                <i class="fa-solid fa-utensils brand-icon"></i>
-                <h2>Acceso Negocio</h2>
-                <p>Ingresa para administrar tu menú y sucursales</p>
-            </div>
-            <form id="loginForm">
-                <div class="input-group">
-                    <label>Nombre del Negocio</label>
-                    <div class="input-box">
-                        <i class="fa-solid fa-store"></i>
-                        <input type="text" id="loginNombre" placeholder="Ej. Restaurante Alfa" required autocomplete="off">
-                    </div>
-                </div>
-                <div class="input-group">
-                    <label>Contraseña</label>
-                    <div class="input-box">
-                        <i class="fa-solid fa-key"></i>
-                        <input type="password" id="loginPass" placeholder="••••••••" required>
-                    </div>
-                </div>
-                <button type="submit" class="btn btn-primary btn-block">Entrar al Portal <i class="fa-solid fa-arrow-right"></i></button>
-            </form>
-        </div>
-    </div>
-
-    <!-- PANEL PRINCIPAL -->
-    <div id="mainDashboard" class="dashboard-wrapper hidden">
-        <nav class="sidebar glass">
-            <div class="brand">
-                <i class="fa-solid fa-utensils"></i>
-                <span id="navNombreNegocio">Cargando...</span>
-            </div>
-            <ul class="nav-links">
-                <li class="active"><i class="fa-solid fa-shop"></i> Perfil General</li>
-                <li onclick="if(estadoGlobal.negocio_id) { window.open('./tienda/index.html?restaurant=' + encodeURIComponent(document.getElementById('navNombreNegocio').innerText), '_blank'); } else { showToast('Por favor espera a que cargue el perfil.', 'error'); }" style="color:var(--accent);"><i class="fa-solid fa-earth-americas"></i> Ir a Tienda Online Activa</li>
-            </ul>
-            <button id="btnLogout" class="btn btn-danger btn-block" style="margin-top: auto;"><i class="fa-solid fa-right-from-bracket"></i> Salir</button>
-        </nav>
-
-        <main class="content-area">
-            <header class="top-nav glass">
-                <div class="nav-left">
-                    <h1>Configuración General</h1>
-                    <div class="plan-badge" id="navPlanBadge"><i class="fa-solid fa-crown"></i> PRO</div>
-                </div>
-                <!-- Botón de guardado muy visible aquí arriba -->
-                <button type="button" class="btn btn-primary btn-lg pulse-btn" id="btnTopGuardar"><i class="fa-solid fa-floppy-disk"></i> Guardar Todo</button>
-            </header>
-
-            <form id="restaurantForm" class="settings-form">
-                
-                <!-- DATOS GENERALES EMPRESA -->
-                <section class="card glass">
-                    <h3><i class="fa-solid fa-building"></i> Identidad de la Marca</h3>
-                    <div class="grid-2">
-                        <div class="input-group">
-                            <label>Logo del Restaurante</label>
-                            <input type="file" id="logoFile" accept="image/*" class="file-input">
-                            <input type="hidden" id="logoUrl">
-                            <div id="logoPreview" class="preview-box"></div>
-                        </div>
-                        <div class="input-group">
-                            <label>WhatsApp / Teléfono Global</label>
-                            <input type="text" id="telefonoPref" placeholder="+1 234 567 8900">
-                        </div>
-                    </div>
-                </section>
-
-                <!-- IZIPAY SETUP -->
-                <section class="card glass" style="border-color: var(--accent);">
-                    <h3><i class="fa-solid fa-credit-card"></i> Configuración Izipay (SEGURO)</h3>
-                    <p style="color:var(--text-muted); font-size:0.9rem; margin-bottom:1.5rem;">Tus claves privadas nunca serán expuestas en tu tienda. Nuestro servidor en Vercel las administrará bajo encriptación fuerte.</p>
-                    <div class="grid-3">
-                        <div class="input-group">
-                            <label>Shop ID</label>
-                            <input type="text" id="izipayShopId" placeholder="Ej. 12345678">
-                        </div>
-                        <div class="input-group">
-                            <label>Public Key</label>
-                            <input type="text" id="izipayPublicKey" placeholder="Ej. 12345678:testpublickey_xxxxxx">
-                        </div>
-                        <div class="input-group">
-                            <label>HMAC / Rest API Key (Private)</label>
-                            <input type="password" id="izipayPrivateKey" placeholder="••••••••••••••••">
-                        </div>
-                    </div>
-                </section>
-
-                <!-- MEGA-CONTENEDOR DE SUCURSALES -->
-                <div class="sucursales-header">
-                    <h2><i class="fa-solid fa-map-location-dot"></i> Administrador de Sucursales</h2>
-                    <p>Agrega cada local, y configura sus propios horarios, pagos y menú de manera independiente.</p>
-                    <button type="button" id="btnAddSucursal" class="btn btn-outline"><i class="fa-solid fa-plus"></i> Añadir Nueva Sucursal</button>
-                </div>
-
-                <div id="sucursalesContainer" class="sucursales-list">
-                    <!-- Cards de Sucursales dinámicas se insertan aquí -->
-                </div>
-
-            </form>
-        </main>
-    </div>
-
-    <!-- TOASTS -->
-    <div id="toastContainer" class="toast-hub"></div>
-
-    <script src="script.js"></script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#17231f" />
+    <meta name="description" content="POS gastronómico multiempresa de Impulsa" />
+    <title>Impulsa POS</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
 </html>
