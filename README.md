@@ -1,4 +1,4 @@
-# Panel Clientes Impulsa
+# Escalar AI POS - CLIENTES
 
 Aplicación operativa multiempresa para restaurantes, construida con React, Vite y TypeScript. Reúne POS, mesas, cocina, delivery, reservas, inventario, caja, ventas y configuración en una interfaz táctil para escritorio y tablet.
 
@@ -9,7 +9,10 @@ Aplicación operativa multiempresa para restaurantes, construida con React, Vite
 - Mapa de mesas y KDS con estados y temporizadores.
 - Caja, inventario por receta, delivery, reservas y ventas del día.
 - Tienda pública en `/tienda/:slug` y reservas públicas en `/reservar/:slug`.
-- Aceptación de invitaciones en `/invitacion`.
+- Acceso directo del propietario con el usuario y contraseña creados desde Admins.
+- Aceptación de invitaciones en `/invitacion` para empleados adicionales.
+
+Cuando Escalar AI crea un restaurante desde Admins, la API prepara su negocio y sucursal, crea el usuario propietario en Supabase Auth y vincula de inmediato su membresía. El restaurante entra directamente con el **Usuario y contraseña** entregados por Escalar AI; no se despliega una copia distinta de la aplicación por restaurante. Las invitaciones se conservan para incorporar empleados posteriormente.
 
 Cada ruta operativa usa el negocio y la sucursal de la membresía autenticada. Los módulos deshabilitados por el superadmin no aparecen en navegación.
 

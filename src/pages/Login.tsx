@@ -25,7 +25,7 @@ export function LoginPage() {
   return (
     <main className="login-page">
       <section className="login-story">
-        <div className="login-brand"><ChefHat /><span>Impulsa Restaurant OS</span></div>
+        <div className="login-brand"><ChefHat /><span>Escalar AI POS</span></div>
         <div className="login-copy">
           <span className="eyebrow light"><Sparkles size={14} /> Operación conectada</span>
           <h1>Del pedido a cocina, sin perder el ritmo.</h1>
@@ -37,13 +37,13 @@ export function LoginPage() {
         <form onSubmit={submit} className="login-form">
           <span className="eyebrow">Acceso de equipo</span>
           <h2>Bienvenido de vuelta</h2>
-          <p>Ingresa con la cuenta que tu administrador asignó al restaurante.</p>
-          <label>Correo<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required autoComplete="email" /></label>
+          <p>Introduce el usuario y la contraseña que Escalar AI creó para tu restaurante.</p>
+          <label>Usuario<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="usuario@restaurante.pe" required autoComplete="username" /></label>
           <label>Contraseña<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required autoComplete="current-password" /></label>
           {error && <div className="form-error">{error}</div>}
           <button className="button button-primary button-large" disabled={loading}>{loading ? "Ingresando..." : "Entrar"}<ArrowRight /></button>
           {canUseDevMode && <button type="button" className="button button-ghost" onClick={signInDev}><LockKeyhole /> Entrar al entorno local</button>}
-          <small className="security-note">Nunca almacenamos contraseñas del restaurante en este navegador.</small>
+          <small className="security-note">Tu contraseña se valida de forma segura con Supabase Auth y no se guarda en el POS.</small>
         </form>
       </section>
     </main>

@@ -3,6 +3,7 @@ import { useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { persistInvitationScope } from "../lib/invitation";
 import { supabase } from "../lib/supabase";
 
 type AcceptedInvitation = {
@@ -39,8 +40,7 @@ export function InvitationPage() {
         method: "POST",
         body: JSON.stringify({ token }),
       });
-      localStorage.setItem("impulsa.businessId", String(result.business_id));
-      if (result.branch_id) localStorage.setItem("impulsa.branchId", String(result.branch_id));
+      persistInvitationScope(localStorage, result);
       setAccepted(result);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "No se pudo aceptar la invitación.");
@@ -72,8 +72,8 @@ export function InvitationPage() {
       <section className="invite-card">
         <div className="invite-icon"><ShieldCheck /></div>
         <span className="eyebrow">Invitación segura</span>
-        <h1>Activa tu acceso a Impulsa.</h1>
-        <p>Confirma tu cuenta y crea una contraseña. El enlace solo puede utilizarse una vez y vence automáticamente.</p>
+        <h1>Activa tu acceso a Escalar AI POS.</h1>
+        <p>Confirma tu cuenta y crea una contraseña. Al terminar entrarás directamente al restaurante que el administrador preparó para ti.</p>
         {!token && <div className="form-error">Este enlace está incompleto. Pide al administrador que genere una invitación nueva.</div>}
         {!user && <div className="form-error">No encontramos una sesión válida de Supabase. Vuelve a abrir el enlace original del correo.</div>}
         <form className="form-stack" onSubmit={accept}>
@@ -84,7 +84,7 @@ export function InvitationPage() {
             {submitting ? <><LoaderCircle className="spin" /> Activando...</> : <><KeyRound /> Activar mi cuenta</>}
           </button>
         </form>
-        <small>Impulsa nunca envía ni muestra contraseñas del equipo.</small>
+        <small>Esta contraseña de empleado la defines tú y no se muestra al administrador.</small>
       </section>
     </main>
   );
