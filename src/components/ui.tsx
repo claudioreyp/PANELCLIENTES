@@ -15,7 +15,14 @@ export function PageHeader({ eyebrow, title, description, actions }: { eyebrow?:
 }
 
 export function StatusPill({ value }: { value: string }) {
-  const label = value.replaceAll("_", " ");
+  const labels: Record<string, string> = {
+    evidence_received: "Comprobante recibido",
+    under_review: "Pendiente de revisión",
+    invalid_evidence: "Imagen no válida",
+    not_a_receipt: "No es comprobante",
+    pending_confirmation: "Pendiente de confirmación",
+  };
+  const label = labels[value] || value.replaceAll("_", " ");
   return <span className={`status-pill status-${value}`}>{label}</span>;
 }
 

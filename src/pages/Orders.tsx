@@ -284,7 +284,7 @@ export function OrdersPage() {
                 </span>
                 <span className="counter-order-meta">
                   <Money value={order.total} />
-                  <StatusPill value={order.payment_status === "evidence_received" ? "evidence_received" : order.status} />
+                  <StatusPill value={["evidence_received", "invalid_evidence"].includes(order.payment_status) ? order.payment_status : order.status} />
                 </span>
               </button>
             ))}

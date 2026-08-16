@@ -492,6 +492,7 @@ label select { width: 100%; border: 1px solid var(--line); border-radius: 10px; 
 
 .button-success { color: white; background: #2f7b55; }
 .status-evidence_received, .status-under_review { background: #fff0c8; color: #7d5916; }
+.status-invalid_evidence, .status-not_a_receipt { background: #f4ddd9; color: #893c36; }
 .counter-page { min-height: calc(100vh - 150px); }
 .counter-workspace { display: grid; grid-template-columns: minmax(360px, .78fr) minmax(560px, 1.45fr); gap: 16px; align-items: stretch; min-height: calc(100vh - 235px); }
 .counter-list, .counter-detail { padding: 0; overflow: hidden; min-height: 660px; }
