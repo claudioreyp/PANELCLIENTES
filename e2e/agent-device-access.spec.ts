@@ -112,6 +112,8 @@ test("updates profile, crops multiple menus, preserves full Yape QR and recovers
   await page.getByRole("button", { name: "Subir imagen 2" }).click();
   await expect(page.getByRole("button", { name: "Subir imagen 2" })).toBeEnabled();
   await screenshot(page, info.outputPath("menu-gallery.png"));
+  await page.getByLabel("Número de Yape", { exact: true }).fill("999888777");
+  await page.getByLabel("Nombre del titular").fill(`Titular prueba ${info.project.name}`);
   await page.getByRole("button", { name: /Subir QR de Yape|Reemplazar QR/ }).click();
   await page.getByLabel("Archivo del agente").setInputFiles({ name: "qr.png", mimeType: "image/png", buffer: qr });
   const preview = page.getByRole("dialog", { name: "QR de Yape", exact: true });
@@ -119,6 +121,20 @@ test("updates profile, crops multiple menus, preserves full Yape QR and recovers
   await preview.getByRole("button", { name: "Guardar", exact: true }).click();
   await expect(preview).toHaveCount(0);
   await expect(page.getByAltText("QR de Yape guardado")).toBeVisible();
+  await expect(page.getByLabel("Nombre del titular")).toHaveValue(`Titular prueba ${info.project.name}`);
+  await page.getByRole("button", { name: "Guardar datos de Yape", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Guardar datos de Yape", exact: true })).toBeDisabled();
+  const credential = await request.post(`${apiBase}/admin/integration-credentials`, {
+    headers: { ...headers, "X-Dev-Role": "superadmin" }, data: { branch_id: 1, name: "Prueba contexto aislada", scopes: ["menu:read"] },
+  });
+  expect(credential.status()).toBe(201);
+  const integrationAuth = { Authorization: `Bearer ${(await credential.json()).token}` };
+  const context = await (await request.get(`${apiBase}/integrations/context`, { headers: integrationAuth })).json();
+  expect(context.payments.yape.number).toBe("999888777");
+  expect(context.payments.yape.recipient_name).toBe(`Titular prueba ${info.project.name}`);
+  expect(await (await request.get(`${apiBase}/integrations/context/yape-qr`, { headers: integrationAuth })).body()).toEqual(qr);
+  const admin = await (await request.get(`${apiBase}/admin/branches/1/agent-context`, { headers: { ...headers, "X-Dev-Role": "superadmin" } })).json();
+  expect(admin.payments).toEqual(context.payments);
   await screenshot(page, info.outputPath("yape-qr.png"));
   await page.getByRole("heading", { name: "Perfil del agente", exact: true }).scrollIntoViewIfNeeded();
   await screenshot(page, info.outputPath("agent-profile.png"));

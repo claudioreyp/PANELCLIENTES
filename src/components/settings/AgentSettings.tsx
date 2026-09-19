@@ -9,9 +9,10 @@ import { SettingsCard, SettingsConfirmDialog, SettingsFeedback, SettingsSectionH
 import { useDirtyRegistration, useSettingsEnabled, useSettingsQuery } from "./SettingsState";
 import "./agent-settings.css";
 
-type Profile = { branch_id: number; version: number; name: string | null; images: { id: string; url: string }[]; yape_qr_url: string | null };
+type Profile = { branch_id: number; version: number; name: string | null; images: { id: string; url: string }[]; yape_qr_url: string | null; yape_number: string | null; payment_recipient_name: string | null };
+type PaymentDraft = { yape_number: string; payment_recipient_name: string };
 type Selection = { file: File; target: string; yape: boolean };
-type Attempt = { path: string; method: string; body: string | FormData; key: string; name?: boolean };
+type Attempt = { path: string; method: string; body: string | FormData; key: string; name?: boolean; payment?: boolean };
 
 export function AgentImage({ path, alt }: { path: string; alt: string }) {
   const [url, setUrl] = useState("");
@@ -51,10 +52,15 @@ function ImageEditor({ selection, busy, error, onClose, onSave, enabled }: {
 
 export function AgentSettings() {
   const { branch } = useTenant();
-  const path = `/settings/branches/${branch?.id || 0}/agent`;
-  const resource = useSettingsQuery<Profile>(path, { branch_id: branch?.id || 0, version: 0, name: null, images: [], yape_qr_url: null });
+  return <BranchAgentSettings key={branch?.id || 0} branchId={branch?.id || 0} />;
+}
+
+function BranchAgentSettings({ branchId }: { branchId: number }) {
+  const path = `/settings/branches/${branchId}/agent`;
+  const resource = useSettingsQuery<Profile>(path, { branch_id: branchId, version: 0, name: null, images: [], yape_qr_url: null, yape_number: null, payment_recipient_name: null });
   const enabled = useSettingsEnabled();
   const [name, setName] = useState<string | null>(null);
+  const [paymentDraft, setPaymentDraft] = useState<PaymentDraft | null>(null);
   const [selection, setSelection] = useState<Selection | null>(null);
   const [remove, setRemove] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -71,6 +77,8 @@ export function AgentSettings() {
     return () => { current.active = false; };
   }, [path, enabled]);
   const dirty = name !== null && name !== (resource.data.name || "");
+  const payment = paymentDraft ?? { yape_number: resource.data.yape_number || "", payment_recipient_name: resource.data.payment_recipient_name || "" };
+  const paymentDirty = payment.yape_number !== (resource.data.yape_number || "") || payment.payment_recipient_name !== (resource.data.payment_recipient_name || "");
   const locked = saving || !enabled || !resource.available || Boolean(pending);
 
   async function perform(next: Attempt): Promise<boolean> {
@@ -83,6 +91,7 @@ export function AgentSettings() {
       if (!current.active || current !== lifetime.current) return false;
       resource.setData(saved); setPending(null); attempt.current = null;
       if (next.name) setName(null);
+      if (next.payment) setPaymentDraft(null);
       setSelection(null); setRemove(null); setNotice("Los cambios se guardaron correctamente.");
       return true;
     } catch (cause) {
@@ -96,13 +105,18 @@ export function AgentSettings() {
       return false;
     } finally { inFlight.current = false; if (current.active && current === lifetime.current) setSaving(false); }
   }
-  function change(method: string, suffix: string, body: object | FormData, nameChange = false) {
-    return perform({ path: `${path}${suffix}`, method, body: body instanceof FormData ? body : JSON.stringify(body), key: settingsIdempotencyKey("agent"), name: nameChange });
+  function change(method: string, suffix: string, body: object | FormData, nameChange = false, paymentChange = false) {
+    return perform({ path: `${path}${suffix}`, method, body: body instanceof FormData ? body : JSON.stringify(body), key: settingsIdempotencyKey("agent"), name: nameChange, payment: paymentChange });
   }
   const saveName = () => pending ? perform(pending) : change("PATCH", "", { name: (name ?? resource.data.name ?? "").trim() || null, expected_version: resource.data.version }, true);
-  const latestSave = useRef(saveName); latestSave.current = saveName;
+  const paymentPayload = { yape_number: payment.yape_number.trim() || null, payment_recipient_name: payment.payment_recipient_name.trim() || null };
+  const savePayment = () => pending ? perform(pending) : change("PATCH", "", { ...paymentPayload, expected_version: resource.data.version }, false, true);
+  const saveAll = () => change("PATCH", "", {
+    ...(dirty ? { name: (name ?? "").trim() || null } : {}), ...(paymentDirty ? paymentPayload : {}), expected_version: resource.data.version,
+  }, dirty, paymentDirty);
+  const latestSave = useRef(saveAll); latestSave.current = saveAll;
   const saveRegisteredDraft = useCallback(() => latestSave.current(), []);
-  useDirtyRegistration({ dirty: dirty || Boolean(selection) || Boolean(pending), saving, save: selection ? null : saveRegisteredDraft });
+  useDirtyRegistration({ dirty: dirty || paymentDirty || Boolean(selection) || Boolean(pending), saving, save: selection || pending ? null : saveRegisteredDraft });
   function chooseFile(suffix: string, yape = false) { target.current = { target: suffix, yape }; input.current?.click(); }
   async function upload(blob: Blob) {
     if (attempt.current) return perform(attempt.current);
@@ -138,6 +152,12 @@ export function AgentSettings() {
       <button className="button button-secondary" disabled={locked || resource.data.images.length >= 10} onClick={() => chooseFile("images")}><Plus />{resource.data.images.length ? "Añadir otra imagen" : "Cargar imagen del menú"}</button>
     </SettingsCard>
     <SettingsCard title="QR de Yape" description="Utiliza una imagen nítida y conserva el código completo, incluidos sus márgenes.">
+      <div className="agent-payment-fields">
+        <label>Número de Yape<input type="tel" maxLength={40} disabled={locked} value={payment.yape_number} onChange={(event) => setPaymentDraft({ ...payment, yape_number: event.target.value })} /></label>
+        <label>Nombre del titular<input maxLength={180} disabled={locked} value={payment.payment_recipient_name} onChange={(event) => setPaymentDraft({ ...payment, payment_recipient_name: event.target.value })} /></label>
+      </div>
+      <p className="settings-muted">Datos opcionales que recibirá la integración de esta sucursal. No habilitan Yape como método de pago.</p>
+      <div className="agent-payment-actions"><button className="button button-secondary" disabled={!paymentDirty || locked} onClick={() => setPaymentDraft(null)}>Cancelar datos de Yape</button><button className="button button-primary" disabled={!paymentDirty || locked} onClick={() => void savePayment()}>Guardar datos de Yape</button></div>
       {resource.data.yape_qr_url ? <div className="agent-yape-preview"><AgentImage path={resource.data.yape_qr_url} alt="QR de Yape guardado" /></div> : <p>No hay un QR de Yape configurado.</p>}
       <div className="agent-image-actions"><button className="button button-secondary" disabled={locked} onClick={() => chooseFile("yape-qr", true)}><Upload />{resource.data.yape_qr_url ? "Reemplazar QR" : "Subir QR de Yape"}</button>{resource.data.yape_qr_url && <button className="button button-ghost" disabled={locked} onClick={() => setRemove("yape-qr")}><Trash2 />Borrar QR</button>}</div>
     </SettingsCard>

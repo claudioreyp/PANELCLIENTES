@@ -10,3 +10,5 @@
 .agent-cropper .cropper-dialog { max-height: 94dvh; overflow-y: auto; }
 .agent-cropper { z-index: 270; }
 .agent-settings label { display: grid; gap: 8px; }
+.agent-payment-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 16px; }
+.agent-payment-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin: 16px 0 24px; }

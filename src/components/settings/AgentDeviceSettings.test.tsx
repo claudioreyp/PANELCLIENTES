@@ -11,7 +11,7 @@ vi.mock("../../lib/api", async (original) => ({ ...await original<typeof import(
 vi.mock("../../lib/tenant", () => ({ useTenant: () => ({ branch: mock.branch }) }));
 vi.mock("qrcode", () => ({ default: { toDataURL: mock.qr } }));
 
-const profile = { branch_id: 7, version: 3, name: "Ana", images: [{ id: "a", url: "/a" }, { id: "b", url: "/b" }], yape_qr_url: "/qr" };
+const profile = { branch_id: 7, version: 3, name: "Ana", images: [{ id: "a", url: "/a" }, { id: "b", url: "/b" }], yape_qr_url: "/qr", yape_number: "999888777", payment_recipient_name: "Titular anterior" };
 const link = { device: { id: 9, version: 1, paired: false, active: true }, url: "http://localhost/activar-dispositivo#token=isolated-link", expires_at: new Date(Date.now() + 600000).toISOString() };
 const changes = vi.fn();
 const registration = vi.fn();
@@ -26,6 +26,60 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe("agent profile", () => {
+  it("cancels payment drafts without saving or changing the name", async () => {
+    render(<AgentSettings />);
+    const number = await screen.findByLabelText("Número de Yape");
+    await waitFor(() => expect(number).toHaveValue("999888777"));
+    fireEvent.change(number, { target: { value: "111222333" } });
+    fireEvent.change(screen.getByLabelText("Nombre (opcional)"), { target: { value: "Luna" } });
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar datos de Yape" }));
+    expect(number).toHaveValue("999888777");
+    expect(screen.getByLabelText("Nombre (opcional)")).toHaveValue("Luna");
+    expect(mock.api).toHaveBeenCalledTimes(1);
+  });
+  it("retains payment drafts across an image save and uses the new version", async () => {
+    render(<AgentSettings />); await screen.findByDisplayValue("Ana");
+    fireEvent.change(screen.getByLabelText("Número de Yape"), { target: { value: " 111222333 " } });
+    fireEvent.change(screen.getByLabelText("Nombre del titular"), { target: { value: " Titular nuevo " } });
+    fireEvent.click(screen.getByRole("button", { name: "Reemplazar QR" }));
+    fireEvent.change(screen.getByLabelText("Archivo del agente"), { target: { files: [new File(["qr"], "qr.png", { type: "image/png" })] } });
+    fireEvent.click(within(screen.getByRole("dialog", { name: "QR de Yape" })).getByRole("button", { name: "Guardar" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(screen.getByLabelText("Nombre del titular")).toHaveValue(" Titular nuevo ");
+    fireEvent.click(screen.getByRole("button", { name: "Guardar datos de Yape" }));
+    await waitFor(() => expect(mock.api.mock.calls.at(-1)![1].method).toBe("PATCH"));
+    expect(JSON.parse(mock.api.mock.calls.at(-1)![1].body)).toEqual({ expected_version: 4, yape_number: "111222333", payment_recipient_name: "Titular nuevo" });
+  });
+  it("retries the identical payment attempt and prevents double submissions", async () => {
+    render(<AgentSettings />); await screen.findByDisplayValue("Ana");
+    fireEvent.change(screen.getByLabelText("Nombre del titular"), { target: { value: "Nuevo titular" } });
+    let reject!: (error: Error) => void;
+    mock.api.mockImplementationOnce(() => new Promise((_resolve, fail) => { reject = fail; }));
+    const save = screen.getByRole("button", { name: "Guardar datos de Yape" });
+    fireEvent.click(save); fireEvent.click(save);
+    expect(mock.api).toHaveBeenCalledTimes(2);
+    const attempt = mock.api.mock.calls.at(-1);
+    await act(async () => reject(new Error("Respuesta perdida")));
+    expect(screen.getByLabelText("Nombre del titular")).toHaveValue("Nuevo titular");
+    fireEvent.click(screen.getByRole("button", { name: "Reintentar guardado" }));
+    await screen.findByText("Los cambios se guardaron correctamente.");
+    expect(mock.api.mock.calls.at(-1)).toEqual(attempt);
+  });
+  it("registers a combined save for navigation and never carries drafts to another branch", async () => {
+    const view = render(<SettingsStateProvider onRegistration={registration}><AgentSettings /></SettingsStateProvider>);
+    await screen.findByDisplayValue("Ana");
+    fireEvent.change(screen.getByLabelText("Nombre (opcional)"), { target: { value: "Sol" } });
+    fireEvent.change(screen.getByLabelText("Nombre del titular"), { target: { value: "Titular nuevo" } });
+    const registered = registration.mock.calls.at(-1)![0];
+    expect(registered.dirty).toBe(true);
+    await act(async () => registered.save());
+    expect(JSON.parse(mock.api.mock.calls.at(-1)![1].body)).toMatchObject({ name: "Sol", payment_recipient_name: "Titular nuevo" });
+    fireEvent.change(screen.getByLabelText("Nombre del titular"), { target: { value: "No debe viajar" } });
+    mock.branch.id = 8;
+    view.rerender(<SettingsStateProvider onRegistration={registration}><AgentSettings /></SettingsStateProvider>);
+    await screen.findByDisplayValue("Ana");
+    expect(screen.queryByDisplayValue("No debe viajar")).not.toBeInTheDocument();
+  });
   it("registers its save callback without a parent update loop", async () => {
     function Workspace() {
       const [, register] = useState<unknown>(null);
