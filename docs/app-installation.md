@@ -113,3 +113,17 @@ La app instalada y la web usan el mismo firmador y conservan los mismos permisos
 - [Chrome: criterios de instalacion](https://web.dev/articles/install-criteria): manifiesto, iconos, contexto seguro y criterios de interaccion del navegador.
 - [Apple: abrir como app web en iPhone](https://support.apple.com/guide/iphone/open-as-web-app-iphea86e5236/ios): agregar al inicio y confirmar como app web.
 - [WebKit: Safari 26](https://webkit.org/blog/17333/webkit-features-in-safari-26-0/): comportamiento de apps web en los sistemas Apple.
+# Public test address (2026-09-19)
+
+The personal/noncommercial test deployment is `https://pos.escalarai.tech`.
+It uses `https://api.escalarai.tech/api/v1` and the recovered Supabase project.
+The localhost installation does not move automatically: open the HTTPS address
+and install that application separately. Sign in with the normal restaurant
+credentials; installing does not change permissions or link a PIN device.
+
+Manifest, icons, deep links and the installation page were verified on the served
+Vercel build in desktop/tablet/mobile browser viewports. Physical mobile
+installation and physical printing from this domain remain pending. Render Free
+may sleep; the application still requires a working connection and awake API.
+See `Apis/docs/deployment-runbook.md` in the workspace for release evidence,
+security follow-ups and commercial activation requirements.
