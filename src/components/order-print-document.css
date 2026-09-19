@@ -1,0 +1,18 @@
+.order-print-document { display: none; }
+
+@media print {
+  @page thermal-order { margin: 0; }
+  body:has(.order-print-document) { margin: 0; padding: 0; background: #fff; }
+  body:has(.order-print-document) > * { display: none !important; }
+  body:has(.order-print-document) > .order-print-document {
+    display: block !important;
+    width: 80mm;
+    max-width: 100%;
+    margin: 0;
+    padding: 0;
+    color: #000;
+    background: #fff;
+    page: thermal-order;
+  }
+  body:has(.order-print-document) > .order-print-document.order-print-58 { width: 58mm; }
+}

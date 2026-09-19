@@ -1,0 +1,29 @@
+.settings-location-backdrop { position: fixed; inset: 0; z-index: 240; display: grid; place-items: center; padding: 20px; background: rgb(30 39 35 / 48%); }
+.settings-location-backdrop[hidden] { display: none; }
+.settings-location-dialog { width: min(900px, 100%); max-height: calc(100dvh - 40px); display: grid; grid-template-rows: auto minmax(0, 1fr) auto; border-radius: 12px; background: var(--paper); }
+.settings-location-dialog > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 20px 24px 12px; }
+.settings-location-dialog h2 { margin: 0; font-size: 1.25rem; }
+.settings-location-body { padding: 0 24px 20px; overflow-y: auto; }
+.settings-location-body > p { color: var(--muted); line-height: 1.5; }
+.settings-location-map { position: relative; height: clamp(280px, 46dvh, 540px); border-radius: 12px; overflow: hidden; background: var(--paper-2); }
+.settings-location-map[hidden] { display: none; }
+.settings-location-map-canvas { width: 100%; height: 100%; }
+.settings-location-pin { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -100%); width: 40px; height: 40px; fill: #d3423b; color: white; pointer-events: none; }
+.settings-location-loading { position: absolute; inset: 0; display: grid; place-items: center; }
+.settings-location-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin: 16px 0; }
+.settings-location-tools a { color: #2465c5; text-decoration: underline; display: inline-flex; align-items: center; gap: 6px; }
+.settings-location-tools a svg { width: 16px; }
+.settings-location-error { color: var(--red-500); padding: 16px; background: var(--paper-2); border-radius: 8px; }
+.settings-location-selection { font-size: .875rem; overflow-wrap: anywhere; }
+.settings-location-coordinates { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+.settings-location-coordinates label { display: grid; flex: 1 1 170px; gap: 8px; min-width: 0; }
+.settings-location-coordinates input { width: 100%; min-width: 0; }
+.settings-location-dialog > footer { padding: 16px 24px; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; border-top: 1px solid var(--line); }
+.settings-location-value { display: grid; gap: 8px; justify-items: start; }
+.settings-location-value small { overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+  .settings-location-backdrop { padding: 12px; }
+  .settings-location-dialog { max-height: calc(100dvh - 24px); }
+  .settings-location-dialog > header, .settings-location-dialog > footer { padding: 16px; }
+  .settings-location-body { padding: 0 16px 16px; }
+}

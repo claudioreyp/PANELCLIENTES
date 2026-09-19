@@ -1,9 +1,11 @@
 import { useState, type FormEvent } from "react";
 import { ArrowRight, ChefHat, LockKeyhole, Sparkles } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 
 export function LoginPage() {
   const { signIn, signInDev, canUseDevMode } = useAuth();
+  const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -15,11 +17,17 @@ export function LoginPage() {
     setError(null);
     try {
       await signIn(email, password);
+      navigate("/", { replace: true });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "No se pudo iniciar sesión");
     } finally {
       setLoading(false);
     }
+  }
+
+  function enterDevMode() {
+    signInDev();
+    navigate("/", { replace: true });
   }
 
   return (
@@ -42,7 +50,7 @@ export function LoginPage() {
           <label>Contraseña<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required autoComplete="current-password" /></label>
           {error && <div className="form-error">{error}</div>}
           <button className="button button-primary button-large" disabled={loading}>{loading ? "Ingresando..." : "Entrar"}<ArrowRight /></button>
-          {canUseDevMode && <button type="button" className="button button-ghost" onClick={signInDev}><LockKeyhole /> Entrar al entorno local</button>}
+          {canUseDevMode && <button type="button" className="button button-ghost" onClick={enterDevMode}><LockKeyhole /> Entrar al entorno local</button>}
           <small className="security-note">Tu contraseña se valida de forma segura con Supabase Auth y no se guarda en el POS.</small>
         </form>
       </section>

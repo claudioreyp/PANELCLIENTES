@@ -1,0 +1,117 @@
+.command-editor-backdrop { position: fixed; inset: 0; z-index: 170; padding: 24px; display: grid; place-items: center; background: rgb(37 45 50 / 30%); }
+.command-editor-dialog { --command-green: #27895b; --command-line: #e4e5e4; --command-muted: #6c706d; width: min(1880px, 100%); height: calc(100dvh - 48px); padding: 20px; display: grid; grid-template-columns: minmax(0, 7fr) minmax(320px, 3fr); gap: 20px; border-radius: 12px; background: #fff; box-shadow: 0 12px 40px rgb(25 32 29 / 18%); color: #2d302e; }
+.command-editor-main { min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; border: 1px solid var(--command-line); border-radius: 12px; background: #fff; scrollbar-width: thin; scrollbar-color: #929792 transparent; }
+.command-editor-empty { min-height: 100%; padding: clamp(64px, 12vh, 160px) 24px 24px; display: flex; align-items: center; flex-direction: column; text-align: center; }
+.command-editor-empty > span { width: 104px; height: 104px; display: grid; place-items: center; margin-bottom: 28px; border-radius: 12px; background: #f5f5f5; color: #777b78; }
+.command-editor-empty svg { width: 64px; height: 64px; }
+.command-editor-empty strong { font-size: 1.12rem; font-weight: 600; }
+.command-editor-empty p { margin: 8px 0 0; font-size: 1rem; color: #646964; }
+.command-editor-form { padding: 20px; display: grid; align-content: start; gap: 24px; }
+.command-editor-form > header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.command-editor-form h3 { margin: 0; min-width: 0; overflow-wrap: anywhere; font-size: 1.15rem; font-weight: 600; }
+.command-editor-form h3:focus { outline: none; }
+.command-editor-product-image, .command-editor-product-thumb { display: grid; place-items: center; flex-shrink: 0; width: 40px; height: 40px; overflow: hidden; border-radius: 5px; background: #f1f2f0; color: #787e78; }
+.command-editor-product-thumb { width: 44px; height: 44px; }
+.command-editor-product-image img, .command-editor-product-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.command-editor-product-image svg, .command-editor-product-thumb svg { width: 22px; height: 22px; }
+.command-promotion-badge { flex-shrink: 0; padding: 4px 8px; border-radius: 12px; color: #795a13; background: #fff4b1; font-size: .76rem; font-weight: 600; }
+.command-editor-form fieldset { margin: 0; padding: 0; min-width: 0; border: 0; }
+.command-editor-prices legend { width: 100%; margin-bottom: 8px; padding: 0; }
+.command-editor-prices legend > strong { float: left; font-size: 1rem; font-weight: 600; }
+.command-editor-prices legend > span { float: right; color: var(--command-muted); font-size: .88rem; }
+.command-editor-prices > div, .command-editor-form .modifier-selector-options { overflow: hidden; border: 1px solid var(--command-line); border-radius: 6px; }
+.command-price-option { min-height: 60px; display: flex; align-items: center; gap: 10px; padding: 12px; font-size: 1rem; font-weight: 400; cursor: pointer; }
+.command-price-option + .command-price-option { border-top: 1px solid var(--command-line); }
+.command-price-option > span:first-of-type { min-width: 0; overflow-wrap: anywhere; }
+.command-price-option input { width: 19px; height: 19px; margin: 0; flex-shrink: 0; accent-color: var(--command-green); }
+.command-price-amount { margin-left: auto; display: flex; align-items: center; gap: 8px; font-variant-numeric: tabular-nums; }
+.command-price-amount > span:last-child { white-space: nowrap; }
+.command-price-amount .command-promotion-badge { border-radius: 8px; padding-block: 8px; }
+.command-editor-form .modifier-selector-heading { width: 100%; display: block; padding: 0 0 8px; margin: 0; }
+.command-editor-form .modifier-selector-heading > span { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.command-editor-form .modifier-selector-heading strong { font-size: 1rem; font-weight: 600; }
+.command-editor-form .modifier-selector-heading small { color: var(--command-muted); font-size: .88rem; text-align: right; }
+.command-editor-form .modifier-selector-heading > i { display: none; }
+.command-editor-form .modifier-option-row { display: flex; flex-direction: row-reverse; gap: 10px; min-height: 48px; padding: 10px 12px; border: 0; border-radius: 0; background: #fff; color: inherit; }
+.command-editor-form .modifier-option-row + .modifier-option-row { border-top: 1px solid var(--command-line); }
+.command-editor-form .modifier-option-row.selected { background: #fff; }
+.command-editor-form .modifier-option-copy { min-width: 0; flex: 1; display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 12px; }
+.command-editor-form .modifier-option-copy strong { font-size: 1rem; font-weight: 400; }
+.command-editor-form .modifier-option-copy small { white-space: nowrap; font-size: .92rem; color: inherit; }
+.command-editor-form .modifier-option-row input { width: 19px; height: 19px; margin: 0; flex-shrink: 0; accent-color: var(--command-green); }
+.command-editor-form .modifier-stepper { gap: 0; overflow: hidden; border: 1px solid var(--command-line); border-radius: 6px; }
+.command-editor-form .modifier-stepper button { width: 36px; height: 36px; min-height: 36px; border: 0; border-radius: 0; color: #303632; background: #fff; }
+.command-editor-form .modifier-stepper button:disabled { color: #747c76; background: #f4f5f3; }
+.command-editor-form .modifier-stepper output { min-width: 30px; height: 36px; display: grid; place-items: center; border-inline: 1px solid var(--command-line); font-weight: 400; }
+.command-editor-notes { display: grid; gap: 6px; font-size: 1rem; font-weight: 500; }
+.command-editor-notes textarea, .command-editor-confirm textarea { width: 100%; min-height: 84px; padding: 10px 12px; border: 1px solid var(--command-line, #e4e5e4); border-radius: 6px; resize: vertical; color: inherit; background: #fff; font-size: 1rem; }
+.command-editor-form > footer { margin-top: -16px; display: flex; justify-content: flex-end; gap: 8px; }
+.command-editor-dialog .button, .command-editor-confirm .button { min-height: 42px; padding: 8px 12px; border-radius: 6px; font-size: .94rem; font-weight: 500; }
+.command-editor-dialog .button-secondary, .command-editor-confirm .button-secondary { border: 1px solid var(--command-line, #e4e5e4); background: #fff; color: #303632; box-shadow: 0 2px 3px rgb(0 0 0 / 7%); }
+.command-editor-dialog .button-primary { border-color: var(--command-green); color: #fff; background: var(--command-green); }
+.command-editor-products { min-width: 0; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; background: #fff; }
+.command-editor-products > header { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 0 0 8px; }
+.command-editor-products h3 { margin: 0; font-size: 1rem; font-weight: 600; }
+.command-editor-products > header .icon-button { width: 36px; height: 36px; min-height: 36px; }
+.command-editor-product-list { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.command-editor-product-list > article { min-height: 72px; display: grid; grid-template-columns: minmax(0, 1fr) 56px 42px; align-items: center; gap: 8px; padding: 8px; margin: 0 0 8px; border: 1px solid transparent; border-radius: 6px; background: #fafafa; }
+.command-editor-product-list > article.selected { border-color: var(--command-green); background: #fff; box-shadow: none; }
+.command-editor-product-list > article.staged-cancel { background: #fff5f3; }
+.command-editor-product-select { min-width: 0; padding: 0; display: flex; align-items: center; gap: 8px; border: 0; color: inherit; background: transparent; text-align: left; }
+.command-editor-product-select > span:last-child { min-width: 0; display: grid; gap: 2px; }
+.command-editor-product-select strong { display: block; overflow-wrap: anywhere; font-size: .94rem; font-weight: 500; line-height: 1.35; }
+.command-editor-product-select small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .8rem; line-height: 1.35; color: var(--command-muted); }
+.command-editor-product-select .command-product-note { color: #295690; }
+.command-editor-product-select .command-staged-label { color: #276648; }
+.staged-cancel .command-editor-product-select .command-staged-label { color: #a0332d; }
+.command-product-quantity { width: 56px; min-width: 0; min-height: 38px; padding: 8px; border: 1px solid transparent; border-radius: 6px; background: #f1f2f1; color: #343a35; font-size: .94rem; font-variant-numeric: tabular-nums; }
+.command-editor-dialog .order-menu-trigger { width: 42px; min-height: 42px; padding: 8px; }
+.command-editor-dialog .order-actions-menu { z-index: 175; width: min(236px, calc(100vw - 24px)); padding: 6px; border: 0; border-radius: 7px; box-shadow: 0 4px 12px rgb(25 30 27 / 20%); }
+.command-editor-dialog .order-actions-menu button { font-size: .94rem; font-weight: 400; }
+.command-editor-dialog .order-menu-label { color: #303632; font-size: .94rem; font-weight: 600; }
+.command-editor-dialog .order-actions-menu button > svg { color: var(--command-green); }
+.command-editor-dialog .order-actions-menu button.danger { color: inherit; }
+.command-editor-dialog .order-actions-menu button.danger > svg { color: #d92c2c; }
+.command-editor-products > footer { padding: 16px 0 0; display: grid; gap: 10px; }
+.command-editor-products > footer > div { display: flex; justify-content: flex-end; gap: 8px; }
+.command-editor-products > footer > small { font-size: .8rem; color: var(--command-muted); }
+.command-editor-error { margin: 0; font-size: .88rem; color: #a1312c; }
+.command-editor-confirm-backdrop { position: fixed; inset: 0; z-index: 190; padding: 20px; display: grid; place-items: center; background: rgb(37 45 50 / 28%); }
+.command-editor-confirm { width: min(560px, 100%); padding: 28px; display: grid; gap: 20px; border-radius: 9px; background: #fff; box-shadow: 0 12px 30px rgb(20 27 23 / 18%); color: #303632; }
+.command-editor-confirm h2 { margin: 0; font-size: 1.2rem; font-weight: 600; }
+.command-editor-confirm .command-cancel-product-name { margin: -12px 0 0; color: #666e67; font-size: .85rem; }
+.command-editor-confirm label { display: grid; gap: 4px; font-size: 1rem; font-weight: 500; }
+.command-editor-confirm label small { font-size: .88rem; font-weight: 400; color: #626963; }
+.command-editor-confirm footer { display: flex; justify-content: flex-end; gap: 8px; }
+.command-editor-confirm .button-danger { border-color: #d82323; background: #d82323; color: #fff; }
+.command-editor-dialog :is(button, input, textarea):focus-visible, .command-editor-confirm :is(button, textarea):focus-visible { outline: 2px solid #27895b; outline-offset: 2px; box-shadow: none; }
+.command-editor-dialog ::selection, .command-editor-confirm ::selection { background: #d8eee1; color: #173e29; }
+@media (max-width: 1000px) {
+  .command-editor-backdrop { padding: 12px; }
+  .command-editor-dialog { height: calc(100dvh - 24px); padding: 12px; gap: 12px; grid-template-columns: minmax(0, 1fr) 300px; }
+  .command-editor-product-list > article { grid-template-columns: minmax(0, 1fr) 44px 40px; gap: 4px; }
+  .command-product-quantity { width: 44px; }
+  .command-editor-product-thumb { width: 32px; height: 32px; }
+  .command-editor-form { padding: 16px; }
+}
+@media (max-width: 680px) {
+  .command-editor-backdrop { padding: 0; }
+  .command-editor-dialog { height: 100dvh; padding: 12px; display: flex; flex-direction: column-reverse; gap: 12px; border-radius: 0; }
+  .command-editor-products { flex: 0 0 auto; max-height: 46dvh; overflow: visible; }
+  .command-editor-products > header { padding-bottom: 4px; }
+  .command-editor-product-list { max-height: 19dvh; }
+  .command-editor-main { flex: 1; min-height: 0; border-radius: 8px; }
+  .command-editor-empty { padding-top: 40px; }
+  .command-editor-empty > span { width: 72px; height: 72px; margin-bottom: 16px; }
+  .command-editor-empty svg { width: 44px; height: 44px; }
+  .command-editor-empty strong { font-size: 1rem; }
+  .command-editor-empty p { font-size: .9rem; }
+  .command-editor-products > footer { padding-top: 0; }
+  .command-editor-products > footer > div { position: absolute; right: 0; bottom: 0; left: 0; padding: 12px; padding-bottom: max(12px, env(safe-area-inset-bottom)); border-top: 1px solid var(--command-line); background: #fff; }
+  .command-editor-products > footer > div > button { flex: 1; }
+  .command-editor-dialog { padding-bottom: calc(78px + env(safe-area-inset-bottom)); }
+  .command-editor-form { gap: 20px; padding: 14px; }
+  .command-editor-form .modifier-stepper button { width: 40px; height: 40px; }
+  .command-price-option { padding-inline: 10px; font-size: .94rem; }
+  .command-editor-confirm { padding: 24px; }
+}

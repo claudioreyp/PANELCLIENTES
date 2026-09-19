@@ -1,0 +1,22 @@
+.delivery-fields { display: grid; gap: 24px; border: 0; padding: 0; margin: 0; min-width: 0; }
+.delivery-fields label { display: grid; gap: 8px; min-width: 0; }
+.delivery-fields label > small { line-height: 1.5; }
+.delivery-fields :is(input, select) { width: 100%; min-width: 0; }
+.delivery-rate-row { display: grid; grid-template-columns: 1fr 1fr 1fr auto; align-items: end; gap: 12px; margin-bottom: 12px; }
+.delivery-rate-row.neighborhood { grid-template-columns: 1fr 1fr auto; }
+.delivery-rate-row .icon-button { margin-bottom: 1px; }
+.delivery-rate-row input[readonly] { background: var(--paper-2); }
+.delivery-rate-row.delivery-final { grid-template-columns: 1fr 1fr 1fr; padding-right: 48px; }
+.delivery-fields .delivery-add { color: var(--pos-primary); font-weight: 600; padding-left: 0; }
+.delivery-levels > small { display: block; margin-top: 8px; }
+.delivery-threshold-field { margin: 12px 0 0 42px; }
+.delivery-neighborhoods, .delivery-levels { padding-bottom: 24px; border-bottom: 1px solid var(--line); }
+.delivery-legacy { display: grid; gap: 16px; }
+@media (max-width: 600px) {
+  .delivery-rate-row, .delivery-rate-row.neighborhood { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; }
+  .delivery-rate-row > label:nth-child(3) { grid-column: 1 / 3; }
+  .delivery-rate-row > button { grid-column: 3; }
+  .delivery-rate-row.neighborhood > label { grid-column: 1 / 3; }
+  .delivery-rate-row.delivery-final { grid-template-columns: 1fr 1fr; padding-right: 0; }
+  .delivery-threshold-field { margin-left: 0; }
+}

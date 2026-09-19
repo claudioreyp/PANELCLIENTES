@@ -1,0 +1,87 @@
+.settings-pin-editor {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: var(--ink);
+}
+
+.settings-pin-label { font-size: 1rem; font-weight: 450; }
+.settings-pin-anchor { position: relative; min-width: 0; }
+.settings-pin-trigger { width: 100%; min-height: 44px; }
+.settings-pin-hint { font-size: .875rem; line-height: 1.45; }
+
+.settings-pin-popover {
+  position: absolute;
+  z-index: 5;
+  inset-block-start: calc(100% + 6px);
+  inset-inline-start: 0;
+  display: grid;
+  gap: 12px;
+  width: min(288px, 100%);
+  max-height: calc(100dvh - 160px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 15px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+  box-shadow: 0 3px 8px #00000029;
+  scrollbar-color: var(--muted) var(--paper-2);
+  scrollbar-width: thin;
+}
+
+.settings-pin-display {
+  display: grid;
+  place-items: center;
+  min-height: 58px;
+  border-radius: 7px;
+  background: var(--paper-2);
+}
+
+.settings-pin-dots { display: flex; align-items: center; gap: 24px; }
+.settings-pin-dot { width: 12px; height: 12px; border: 1px solid var(--muted); border-radius: 50%; }
+.settings-pin-dot.is-filled { border-color: var(--ink); background: var(--ink); }
+.settings-pin-keypad { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+
+.settings-pin-key {
+  display: grid;
+  place-items: center;
+  min-width: 44px;
+  min-height: 48px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: var(--ink);
+  background: var(--paper);
+  box-shadow: 0 1px 2px #00000012;
+  font-size: 1.125rem;
+  font-weight: 550;
+  font-variant-numeric: tabular-nums;
+  touch-action: manipulation;
+}
+
+.settings-pin-key-utility { border-color: transparent; box-shadow: none; }
+.settings-pin-key svg { width: 22px; height: 22px; }
+.settings-pin-key:active { background: var(--green-100); }
+.settings-pin-editor :is(button, [tabindex]):focus-visible { outline: 2px solid var(--green-700); outline-offset: 3px; }
+.settings-pin-footer { display: flex; align-items: center; gap: 12px; justify-content: space-between; }
+.settings-pin-footer .button { min-height: 44px; flex: 1; }
+.settings-pin-error { color: var(--red-500); font-size: .875rem; line-height: 1.4; }
+
+.settings-pin-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (hover: hover) {
+  .settings-pin-key:hover { border-color: var(--muted); background: var(--paper-2); }
+}
+
+@media (forced-colors: active) {
+  .settings-pin-dot.is-filled { background: Highlight; }
+}

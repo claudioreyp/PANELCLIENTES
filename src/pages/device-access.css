@@ -1,0 +1,23 @@
+.device-access { --device-green: #25824f; min-height: 100dvh; padding: 40px 20px; display: grid; place-items: center; background: linear-gradient(145deg, #f2fbf5, #def1e6); color: #262626; }
+.device-access-card { width: min(100%, 460px); background: #fff; padding: 32px; border-radius: 14px; box-shadow: 0 12px 36px rgb(24 64 41 / 10%); display: grid; gap: 20px; }
+.device-access-brand { display: flex; align-items: center; gap: 10px; font-size: 1.15rem; }
+.device-access-brand svg { color: var(--device-green); width: 30px; height: 30px; }
+.device-access-card h1 { font-size: 1.45rem; line-height: 1.35; margin: 0; text-align: center; }
+.device-access-card p { margin: 0; line-height: 1.5; }
+.device-access-card > a { color: var(--device-green); text-align: center; text-underline-offset: 4px; margin-top: 8px; }
+.device-branch-label { background: #f5f5f5; padding: 14px; border-radius: 8px; }
+.device-access-card form, .device-access-card label, .device-member-list { display: grid; gap: 12px; }
+.device-access-card input { width: 100%; min-height: 44px; padding: 10px; border: 1px solid #bdbdbd; border-radius: 8px; caret-color: var(--device-green); }
+.device-access-help { color: #666; font-size: .875rem; }
+.device-pin-pad:focus-visible { outline: 2px solid var(--device-green); outline-offset: 6px; border-radius: 8px; }
+.device-pin-dots { display: flex; justify-content: center; gap: 32px; padding: 16px 0 32px; }
+.device-pin-dots span { width: 12px; height: 12px; border: 1px solid #888; border-radius: 50%; }
+.device-pin-dots .is-filled { background: #262626; border-color: #262626; }
+.device-keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.device-keypad button { background: #fff; color: #262626; border: 1px solid #e5e5e5; border-radius: 12px; min-height: 62px; font: inherit; font-size: 1.2rem; display: grid; place-items: center; cursor: pointer; }
+.device-keypad button:hover:not(:disabled) { background: #eaf6ef; }
+.device-keypad button:disabled { color: #777; cursor: default; background: #f5f5f5; }
+.device-access-error { color: #a22529; background: #ffe3e4; padding: 12px; border-radius: 8px; }
+.device-access :focus-visible { outline-color: var(--device-green); outline-offset: 3px; }
+.device-access ::selection { background: #daf1e3; }
+@media (max-width: 480px) { .device-access { padding: 20px 12px; } .device-access-card { padding: 24px; } .device-keypad button { min-height: 56px; } }

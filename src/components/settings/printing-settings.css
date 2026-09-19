@@ -1,0 +1,64 @@
+.printing-settings > .settings-card { margin: 0; }
+.printing-primary-fields { display: grid; gap: 20px; }
+.printing-printer-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: end; }
+.printing-settings input[readonly] { color: var(--muted, #666); background: var(--canvas, #f5f5f5); }
+.printing-disclosure { border-top: 1px solid var(--line, #e5e5e5); margin-top: 20px; padding-top: 16px; }
+.printing-disclosure > summary { cursor: pointer; padding: 6px 0; color: var(--ink, #262626); font-weight: 550; }
+.printing-disclosure > summary:focus-visible { outline: 2px solid var(--pos-primary, #25824f); outline-offset: 3px; }
+.printing-disclosure > div { margin-top: 16px; }
+.printing-connection-tools, .printing-advanced-fields, .printing-config-fields { display: grid; gap: 18px; }
+.printing-diagnostics { border-top: 1px solid var(--line, #e5e5e5); margin-top: 20px; padding-top: 20px; }
+.printing-diagnostics h4 { font-size: 1rem; margin: 0 0 8px; }
+.printing-diagnostics > p { margin-bottom: 12px; }
+.printing-overlay { position: fixed; inset: 0; z-index: 230; padding: 24px; display: grid; place-items: center; background: color-mix(in srgb, var(--ink) 48%, transparent); }
+.printing-overlay[hidden] { display: none; }
+.printing-config-dialog { width: min(560px, 100%); max-height: calc(100dvh - 48px); display: grid; grid-template-rows: auto minmax(0, 1fr) auto; background: #fff; color: var(--ink, #262626); border-radius: 19px; overflow: hidden; }
+.printing-surface-header { padding: 18px 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--line, #e5e5e5); background: #fff; }
+.printing-surface-header h2 { margin: 0; font-size: 1.25rem; }
+.printing-surface-body { overflow-y: auto; min-height: 0; }
+.printing-surface-footer { padding: 16px 24px; display: flex; justify-content: flex-end; gap: 12px; border-top: 1px solid var(--line, #e5e5e5); }
+.printing-config-fields { padding: 24px; }
+.printing-document-options { border: 0; padding: 0; margin: 0; display: grid; gap: 18px; min-width: 0; }
+.printing-document-options legend { margin-bottom: 14px; font-weight: 550; }
+.printing-document-options:disabled { opacity: .6; }
+.printing-overlay.is-fullscreen { padding: 0; background: #f5f5f5; }
+.printing-editor { width: 100%; height: 100dvh; display: grid; grid-template-rows: auto minmax(0, 1fr); color: var(--ink, #262626); background: #fff; }
+.printing-editor .printing-surface-header { display: grid; grid-template-columns: 1fr minmax(0, auto) 1fr; min-height: 76px; }
+.printing-editor .printing-surface-header > button:first-child { justify-self: start; }
+.printing-editor .printing-surface-header > button:last-child { justify-self: end; }
+.printing-editor-layout { display: grid; grid-template-columns: minmax(300px, 440px) minmax(0, 1fr); min-height: 100%; max-width: 1400px; margin-inline: auto; }
+.printing-editor-controls { padding: 32px; display: flex; flex-direction: column; gap: 26px; }
+.printing-editor-feedback { padding: 16px 24px 0; }
+.printing-editor-controls .printing-disclosure { margin-top: 0; }
+.printing-editor-controls textarea { resize: vertical; min-height: 100px; }
+.printing-text-option { display: grid; gap: 16px; }
+.printing-checkbox { display: flex; align-items: center; gap: 10px; }
+.printing-checkbox input { width: 18px; height: 18px; margin: 0; }
+.printing-preview-pane { padding: 28px 32px 48px; background: #f5f5f5; min-width: 0; }
+.printing-preview-pane > header { display: flex; justify-content: space-between; gap: 16px; align-items: center; }
+.printing-preview-pane h3 { margin: 0; font-size: 1rem; }
+.printing-preview-pane > p, .printing-preview-pane > header > span, .printing-editor-controls p, .printing-config-fields p { color: var(--muted, #666); font-size: .875rem; line-height: 1.5; }
+.printing-preview-pane > p { margin: 10px 0 28px; }
+.printing-live-preview { width: fit-content; max-width: 100%; margin-inline: auto; box-shadow: var(--shadow); }
+.printing-compact-tabs { display: none; }
+@media (max-width: 900px) {
+  .printing-editor .printing-surface-body { display: flex; flex-direction: column; }
+  .printing-compact-tabs { display: flex; justify-content: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line, #e5e5e5); }
+  .printing-editor-layout { display: block; width: 100%; flex: 1; min-height: 0; }
+  .printing-editor-controls { padding: 24px; }
+  .printing-preview-pane { display: none; min-height: 100%; }
+  .printing-editor-layout.shows-preview .printing-preview-pane { display: block; }
+  .printing-editor-layout.shows-preview .printing-editor-controls { display: none; }
+  .printing-surface-header .button, .printing-surface-footer .button, .printing-config-dialog .icon-button, .printing-compact-tabs .button, .printing-disclosure > summary { min-height: 44px; }
+}
+@media (max-width: 540px) {
+  .printing-overlay { padding: 12px; }
+  .printing-config-dialog { max-height: calc(100dvh - 24px); }
+  .printing-surface-header, .printing-config-fields, .printing-surface-footer, .printing-editor-controls { padding: 16px; }
+  .printing-editor .printing-surface-header { gap: 8px; grid-template-columns: auto minmax(0, 1fr) auto; }
+  .printing-editor .printing-surface-header h2 { font-size: 1rem; text-align: center; overflow-wrap: anywhere; }
+  .printing-editor .printing-surface-header .button { padding-inline: 10px; }
+  .printing-editor .printing-surface-header svg { display: none; }
+  .printing-preview-pane { padding: 20px 12px 32px; }
+  .printing-printer-row { grid-template-columns: minmax(0, 1fr); }
+}

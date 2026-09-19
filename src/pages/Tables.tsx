@@ -16,6 +16,8 @@ export function TablesPage() {
   const [editMode, setEditMode] = useState(false);
   const [selected, setSelected] = useState<RestaurantTable | null>(null);
   const [creating, setCreating] = useState(false);
+  const [creatingArea, setCreatingArea] = useState(false);
+  const [newAreaName, setNewAreaName] = useState("");
   const [newName, setNewName] = useState("");
   const [newCapacity, setNewCapacity] = useState(4);
   const [toast, setToast] = useState<{ message: string; tone: "success" | "error" } | null>(null);
@@ -72,6 +74,27 @@ export function TablesPage() {
     } catch (caught) { setToast({ message: caught instanceof Error ? caught.message : "No se pudo crear", tone: "error" }); }
   }
 
+  async function createArea() {
+    if (!branch || !newAreaName.trim()) return;
+    try {
+      const area = await api<Area>("/areas", {
+        method: "POST",
+        body: JSON.stringify({
+          branch_id: branch.id,
+          name: newAreaName.trim(),
+          sort_order: data.areas.length,
+        }),
+      });
+      setCreatingArea(false);
+      setNewAreaName("");
+      setAreaId(area.id);
+      await resource.refresh();
+      setToast({ message: "Salón creado y listo para agregar mesas.", tone: "success" });
+    } catch (caught) {
+      setToast({ message: caught instanceof Error ? caught.message : "No se pudo crear el salón", tone: "error" });
+    }
+  }
+
   async function markAvailable(table: RestaurantTable) {
     try {
       await api(`/tables/${table.id}`, { method: "PATCH", body: JSON.stringify({ status: "available", expected_version: table.version }) });
@@ -82,7 +105,7 @@ export function TablesPage() {
   return (
     <div className="page-stack tables-page">
       <PageHeader eyebrow="Servicio de salón" title="Mapa de mesas" description="Abre cuentas y mantén el salón sincronizado con caja y cocina." actions={<><button className={`button ${editMode ? "button-primary" : "button-secondary"}`} onClick={() => setEditMode(!editMode)}>{editMode ? <Save /> : <Move />}{editMode ? "Terminar edición" : "Editar plano"}</button><button className="button button-primary" onClick={() => setCreating(true)}><Plus /> Nueva mesa</button></>} />
-      <div className="area-tabs">{data.areas.map((area) => <button key={area.id} className={areaId === area.id ? "active" : ""} onClick={() => setAreaId(area.id)}>{area.name}</button>)}</div>
+      <div className="area-tabs">{data.areas.map((area) => <button key={area.id} className={areaId === area.id ? "active" : ""} onClick={() => setAreaId(area.id)}>{area.name}</button>)}<button className="area-add" onClick={() => setCreatingArea(true)}><Plus /> Nuevo salón</button></div>
       <section className={`floor-plan panel ${editMode ? "editing" : ""}`}>
         <div className="floor-grid" />
         {visible.map((table) => <button
@@ -99,6 +122,7 @@ export function TablesPage() {
       </section>
       <div className="table-legend">{(["available", "reserved", "occupied", "cleaning"] as const).map((status) => <span key={status}><i className={`table-dot table-${status}`} />{status.replace("available", "Libre").replace("reserved", "Reservada").replace("occupied", "Ocupada").replace("cleaning", "Limpieza")}</span>)}</div>
       {selected && <Modal title={selected.name} onClose={() => setSelected(null)}><div className="table-detail"><div className={`table-preview table-${selected.status}`}><strong>{selected.name}</strong><Users /> {selected.capacity} personas</div><StatusPill value={selected.status} />{selected.status === "available" && <button className="button button-primary button-large" onClick={() => navigate(`/pos?table=${selected.id}`)}><Grid2X2Plus /> Abrir mesa y tomar pedido</button>}{selected.status === "occupied" && <button className="button button-secondary button-large" onClick={() => navigate(`/pedidos?table=${selected.id}`)}>Ver cuenta abierta</button>}{selected.status === "cleaning" && <button className="button button-primary button-large" onClick={() => void markAvailable(selected)}><CheckCircle2 /> Marcar mesa libre</button>}</div></Modal>}
+      {creatingArea && <Modal title="Nuevo salón" onClose={() => setCreatingArea(false)}><div className="form-stack"><label>Nombre del salón<input value={newAreaName} onChange={(event) => setNewAreaName(event.target.value)} placeholder="Ej. Terraza" autoFocus /></label><p className="form-help">Después podrás crear y acomodar las mesas dentro de este plano.</p><button className="button button-primary button-large" disabled={!newAreaName.trim()} onClick={() => void createArea()}><Plus /> Crear salón</button></div></Modal>}
       {creating && <Modal title="Nueva mesa" onClose={() => setCreating(false)}><div className="form-stack"><label>Nombre<input value={newName} onChange={(event) => setNewName(event.target.value)} placeholder="Ej. Mesa 12" /></label><label>Capacidad<input type="number" min="1" max="30" value={newCapacity} onChange={(event) => setNewCapacity(Number(event.target.value))} /></label><button className="button button-primary button-large" onClick={() => void createTable()}><Plus /> Crear mesa</button></div></Modal>}
       {toast && <Toast {...toast} onDismiss={() => setToast(null)} />}
     </div>

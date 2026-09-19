@@ -1,0 +1,12 @@
+.print-notifications { position: fixed; right: 20px; bottom: 20px; z-index: 220; display: grid; gap: 12px; width: min(440px, calc(100vw - 32px)); max-height: 42vh; overflow-y: auto; pointer-events: none; }
+.print-notification { display: flex; align-items: flex-start; gap: 12px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; color: var(--ink); background: var(--paper); }
+.print-notification.is-warning > svg { color: var(--amber-500); }
+.print-notification > svg { flex: 0 0 20px; margin-top: 3px; }
+.print-notification > div { min-width: 0; flex: 1; }
+.print-notification p { font-size: .875rem; line-height: 1.5; margin-bottom: 0; overflow-wrap: anywhere; }
+.print-notification p > strong { display: block; margin-bottom: 4px; }
+.print-notification .button { margin-top: 12px; }
+.print-notification .icon-button { flex-shrink: 0; }
+.print-notification button { pointer-events: auto; }
+@media (max-width: 600px) { .print-notifications { right: 16px; bottom: 16px; } }
+@media print { .print-notifications { display: none !important; } }

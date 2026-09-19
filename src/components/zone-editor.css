@@ -1,0 +1,22 @@
+.zone-editor-backdrop.zone-editor-settings-layer { z-index: 240; }
+.zone-editor-backdrop[hidden], .zone-name-backdrop[hidden] { display: none; }
+.zone-editor-backdrop .zone-editor { height: 100dvh; }
+.zone-editor-backdrop .zone-editor-header { grid-template-columns: auto minmax(0, 1fr) auto; }
+.zone-editor-backdrop .zone-editor-header h2 { text-align: center; overflow-wrap: anywhere; }
+.zone-editor .zone-editor-error { margin: 0; padding: 12px; grid-column: 1 / -1; border-radius: 8px; color: var(--red-500); background: #fff3f1; font-size: .875rem; line-height: 1.5; }
+.zone-empty-panel { min-height: 440px; display: grid; }
+.zone-empty-panel .zone-empty-state { position: static; padding: 32px 20px; }
+.zone-empty-state p { max-width: 52ch; }
+.zone-name-backdrop { position: fixed; inset: 0; z-index: 230; display: grid; place-items: center; padding: 18px; background: rgba(30, 39, 35, .48); }
+.zone-name-dialog { width: min(480px, 100%); padding: 24px; border-radius: 12px; background: var(--paper, #fff); }
+.zone-name-dialog h2 { margin: 0 0 24px; font-size: 1.25rem; }
+.zone-name-dialog .form-help { margin-top: 10px; line-height: 1.5; }
+.zone-name-dialog footer { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 24px; }
+.settings-zones .settings-resource-row .zone-open-button { flex: 1; min-width: 0; padding: 8px 0; border: 0; text-align: left; color: inherit; background: transparent; }
+.settings-zones .zone-open-button strong { white-space: normal; overflow-wrap: anywhere; }
+.settings-zones .zone-open-button:hover strong { text-decoration: underline; text-underline-offset: 3px; }
+.settings-zones .zone-open-button:focus-visible { outline: 2px solid var(--green-800); outline-offset: 4px; }
+@media (max-width: 600px) {
+  .zone-empty-panel { min-height: 360px; }
+  .zone-name-dialog { padding: 20px; }
+}

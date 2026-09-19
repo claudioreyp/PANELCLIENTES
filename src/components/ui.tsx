@@ -1,5 +1,6 @@
-import type { ReactNode } from "react";
+import { useEffect, useId, useRef, type ReactNode } from "react";
 import { AlertTriangle, LoaderCircle, X } from "lucide-react";
+import { DialogPortal, useDialogSurface } from "../lib/dialog";
 
 export function PageHeader({ eyebrow, title, description, actions }: { eyebrow?: string; title: string; description?: string; actions?: ReactNode }) {
   return (
@@ -16,11 +17,30 @@ export function PageHeader({ eyebrow, title, description, actions }: { eyebrow?:
 
 export function StatusPill({ value }: { value: string }) {
   const labels: Record<string, string> = {
+    draft: "Borrador",
+    pending: "Pendiente",
+    partial: "Pago parcial",
+    paid: "Pagado",
+    confirmed: "Confirmado",
+    sent_to_kitchen: "Enviado a cocina",
+    preparing: "En preparación",
+    ready: "Listo",
+    dispatched: "Despachado",
+    delivered: "Entregado",
+    closed: "Cerrado",
+    cancelled: "Cancelado",
+    queued: "En cola",
+    rejected: "Rechazado",
     evidence_received: "Comprobante recibido",
     under_review: "Pendiente de revisión",
     invalid_evidence: "Imagen no válida",
     not_a_receipt: "No es comprobante",
     pending_confirmation: "Pendiente de confirmación",
+    available: "Libre",
+    reserved: "Reservada",
+    occupied: "Ocupada",
+    cleaning: "Por limpiar",
+    served: "Entregada",
   };
   const label = labels[value] || value.replaceAll("_", " ");
   return <span className={`status-pill status-${value}`}>{label}</span>;
@@ -58,17 +78,64 @@ export function EmptyState({ title, detail }: { title: string; detail: string })
   return <div className="empty-state"><strong>{title}</strong><p>{detail}</p></div>;
 }
 
-export function Modal({ title, children, onClose, wide = false }: { title: string; children: ReactNode; onClose: () => void; wide?: boolean }) {
+export function Modal({
+  title,
+  children,
+  onClose,
+  wide = false,
+  className = "",
+}: {
+  title: string;
+  children: ReactNode;
+  onClose: () => void;
+  wide?: boolean;
+  className?: string;
+}) {
+  const titleId = useId();
+  const surfaceRef = useDialogSurface(onClose);
   return (
-    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <section className={`modal-card ${wide ? "modal-wide" : ""}`} role="dialog" aria-modal="true" aria-label={title}>
-        <header><h2>{title}</h2><button className="icon-button" onClick={onClose} aria-label="Cerrar"><X /></button></header>
-        <div className="modal-content">{children}</div>
-      </section>
-    </div>
+    <DialogPortal>
+      <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+        <section
+          ref={surfaceRef}
+          className={`modal-card ${wide ? "modal-wide" : ""} ${className}`.trim()}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={titleId}
+          tabIndex={-1}
+        >
+          <header><h2 id={titleId}>{title}</h2><button className="icon-button" data-dialog-initial-focus onClick={onClose} aria-label="Cerrar"><X /></button></header>
+          <div className="modal-content">{children}</div>
+        </section>
+      </div>
+    </DialogPortal>
   );
 }
 
-export function Toast({ message, tone = "success", onDismiss }: { message: string; tone?: "success" | "error"; onDismiss: () => void }) {
-  return <div className={`toast toast-${tone}`} role="status"><span>{message}</span><button onClick={onDismiss}><X size={16} /></button></div>;
+export function Toast({
+  message,
+  tone = "success",
+  durationMs,
+  onDismiss,
+}: {
+  message: string;
+  tone?: "success" | "error";
+  durationMs?: number;
+  onDismiss: () => void;
+}) {
+  const dismissRef = useRef(onDismiss);
+  dismissRef.current = onDismiss;
+
+  useEffect(() => {
+    if (!durationMs) return;
+    const timer = window.setTimeout(() => dismissRef.current(), durationMs);
+    return () => window.clearTimeout(timer);
+  }, [durationMs, message]);
+
+  return (
+    <div className={`toast toast-${tone}`} role={tone === "error" ? "alert" : "status"}>
+      <span>{message}</span>
+      <button type="button" onClick={onDismiss} aria-label="Cerrar aviso"><X size={16} /></button>
+    </div>
+  );
 }

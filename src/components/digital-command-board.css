@@ -1,0 +1,69 @@
+.digital-command-board {
+  --command-line: #e1e2e1;
+  --command-muted: #6a6b6a;
+  min-width: 0;
+  min-height: 680px;
+  container-type: inline-size;
+  background: #f5f5f5;
+  color: #292d2a;
+}
+.digital-command-board .command-board-toolbar { gap: 12px; }
+.digital-command-board .command-board-toolbar .button { min-height: 44px; padding: 8px 12px; background: #fff; border-color: var(--command-line); font-size: .9rem; }
+.digital-command-board .command-board-toolbar svg { width: 18px; }
+.digital-command-board .command-board-summary { min-height: 64px; grid-template-columns: 120px minmax(0, 1fr) 120px; border-color: var(--command-line); border-radius: 12px; box-shadow: none; }
+.digital-command-board .command-board-summary > strong { font-size: .95rem; font-weight: 400; }
+.digital-command-board .command-board-summary > span { font-size: .95rem; font-weight: 400; border-color: var(--command-line); }
+.digital-command-board .command-board-canvas { min-height: 570px; border-color: var(--command-line); box-shadow: none; background: #fff; }
+.digital-command-board .command-card-grid { padding: 20px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 360px)); align-items: start; align-content: start; gap: 20px; }
+.digital-command-board .command-card { min-width: 0; padding: 16px; display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--command-line); border-radius: 16px; background: #fff; box-shadow: none; overflow-wrap: anywhere; }
+.digital-command-board .command-card-heading { align-items: flex-start; gap: 8px; }
+.digital-command-board .command-card-reference { flex-wrap: wrap; gap: 4px; font-size: .9rem; }
+.digital-command-board .command-card-reference strong { font-size: .9rem; font-weight: 500; }
+.digital-command-board .command-card-reference > span:not(.order-identity) { padding: 2px 8px; background: #eee; color: #515551; font-size: .75rem; white-space: nowrap; }
+.digital-command-board .command-card-reference .order-identity { padding: 0; background: none; white-space: normal; }
+.digital-command-board .command-card-context { padding: 2px 9px; color: #343934; background: #fff; border: 1px solid var(--command-line); font-size: .75rem; white-space: normal; text-align: center; }
+.digital-command-board .context-takeaway { border-color: #edce71; background: #fffbec; }
+.digital-command-board .context-delivery { border-color: #c4d6df; background: #f5faff; }
+.digital-command-board .command-card-customer { gap: 4px; padding-top: 0; }
+.digital-command-board .command-card-customer strong { font-size: 1rem; font-weight: 600; }
+.digital-command-board .command-card-customer small { font-size: .875rem; color: var(--command-muted); white-space: normal; }
+.digital-command-board .command-card-clock { gap: 8px; margin: 0; padding-bottom: 12px; border-bottom: 1px solid var(--command-line); font-size: .875rem; }
+.digital-command-board .command-card-clock > time { font-size: .875rem; font-weight: 400; }
+.digital-command-board .command-timer { font-size: .75rem; padding: 2px 8px; font-variant-numeric: tabular-nums; }
+.digital-command-board .command-timer-normal { color: #205c40; background: #d8efdf; }
+.digital-command-board .command-timer-warning { color: #7a500a; background: #fff0c8; }
+.digital-command-board .command-timer-critical { color: #a22529; background: #ffe3e4; }
+.digital-command-board .command-card-modified { padding: 0; margin: 4px 0 0; color: #a55300; background: transparent; font-size: .875rem; }
+.digital-command-board .command-card-modified svg { flex: 0 0 16px; }
+.digital-command-board .command-card-items { display: grid; gap: 20px; margin: 4px 0 12px; padding: 0; border: 0; }
+.digital-command-board .command-card-items > .order-breakdown { display: grid; gap: 20px; margin: 0; }
+.digital-command-board .order-breakdown-note { margin-left: 24px; border-left: 4px solid #bedaff; background: #eff6ff; color: #224da7; }
+.digital-command-board .order-breakdown-groups { margin-left: 24px; }
+.digital-command-board .order-breakdown-option > span { white-space: normal; }
+.digital-command-board .command-card-items strong { font-size: 1rem; line-height: 1.4; font-weight: 600; }
+.digital-command-board .command-card-items .command-item-change,
+.digital-command-board .command-card-items .command-item-reason { font-size: .875rem; }
+.digital-command-board .command-card-items .command-item-change { color: #965005; }
+.digital-command-board .command-card-items .command-item-reason { color: #a22529; }
+.digital-command-board .command-item-group { margin: 4px 0 0 28px; display: grid; gap: 3px; font-size: .95rem; line-height: 1.45; }
+.digital-command-board .command-item-group > span { color: var(--command-muted); }
+.digital-command-board .command-item-group p { margin: 0; }
+.digital-command-board .command-item-note { width: fit-content; max-width: calc(100% - 28px); margin: 0 0 0 28px; padding: 6px 10px; display: flex; align-items: flex-start; gap: 8px; color: #224da7; background: #eff6ff; border-left: 4px solid #bedaff; border-radius: 8px; font-size: .95rem; line-height: 1.4; }
+.digital-command-board .command-item-note svg { width: 18px; height: 20px; flex-shrink: 0; }
+.digital-command-board .command-card-action { min-height: 44px; margin: 0; padding: 8px 12px; font-size: .95rem; font-weight: 600; }
+.digital-command-board .command-card-action.button-primary { background: #278853; color: #fff; border-color: transparent; }
+.digital-command-board .command-card-action.button-primary:hover { background: #207646; }
+.digital-command-board .command-board-pagination { border-color: var(--command-line); background: #fafafa; gap: 8px; }
+.digital-command-board .command-board-pagination .icon-button { width: 44px; height: 44px; }
+.digital-command-board .command-board-pagination > span { font-size: .8rem; }
+.digital-command-board button:focus-visible { outline: 2px solid #278853; outline-offset: 3px; }
+.digital-command-board ::selection { color: #143925; background: #ccebd8; }
+.digital-command-board.is-fullscreen { height: 100dvh; overflow-y: auto; padding: 24px; }
+@container (max-width: 640px) {
+  .digital-command-board .command-board-summary { grid-template-columns: 88px minmax(0, 1fr); }
+  .digital-command-board .command-card-grid { grid-template-columns: 1fr; padding: 12px; gap: 12px; }
+  .digital-command-board .command-board-toolbar { align-items: flex-end; }
+  .digital-command-board .command-board-toolbar > div { display: flex; flex-wrap: wrap; justify-content: flex-end; }
+  .digital-command-board .command-board-toolbar .button { width: auto; font-size: .8rem; }
+  .digital-command-board .command-board-summary > span { padding-inline: 12px; }
+}

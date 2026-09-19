@@ -27,8 +27,24 @@ npm run dev
 Variables necesarias:
 
 - `VITE_API_BASE_URL`: base `/api/v1` de FastAPI.
-- `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY`: autenticación pública de Supabase.
+- `VITE_SUPABASE_URL` y `VITE_SUPABASE_PUBLISHABLE_KEY`: autenticación pública de Supabase. `VITE_SUPABASE_ANON_KEY` queda como compatibilidad temporal para proyectos legacy.
 - `VITE_DEV_*`: solo desarrollo local; no configurarlas en Vercel.
+
+### Arranque completo del POS local (Windows)
+
+Con las dependencias y variables de ambos proyectos ya configuradas, ejecuta desde `CLIENTES`:
+
+```powershell
+npm run pos
+```
+
+Este comando inicia la API de `../Apis` en `8000`, espera que su health check confirme
+la conexión y después inicia CLIENTES en `http://127.0.0.1:5173/pedidos`.
+Reutiliza servicios que ya estén disponibles sin duplicarlos ni detener otros procesos.
+Ambos quedan en segundo plano al cerrar la terminal; después de reiniciar Windows,
+vuelve a ejecutar el comando. No instala un inicio automático ni modifica la autenticación,
+las variables de entorno o la base de datos. Los registros locales quedan en archivos
+`pos-*.log`, excluidos de Git. `npm run dev` inicia solamente la interfaz, no la API.
 
 ## Verificación y despliegue
 

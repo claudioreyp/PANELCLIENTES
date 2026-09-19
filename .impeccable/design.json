@@ -1,0 +1,583 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-09T21:42:57Z",
+  "title": "Design System: Escalar AI POS",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "Primary Green",
+        "canonical": "#25824f",
+        "tonalRamp": [
+          "oklch(15.00% 0.11738 154.78)",
+          "oklch(26.43% 0.11738 154.78)",
+          "oklch(37.86% 0.11738 154.78)",
+          "oklch(49.29% 0.11738 154.78)",
+          "oklch(60.71% 0.11738 154.78)",
+          "oklch(72.14% 0.11738 154.78)",
+          "oklch(83.57% 0.11738 154.78)",
+          "oklch(95.00% 0.11738 154.78)"
+        ]
+      },
+      "accent": {
+        "role": "primary",
+        "displayName": "Selection Green",
+        "canonical": "#35a167",
+        "tonalRamp": [
+          "oklch(15.00% 0.13146 155.75)",
+          "oklch(26.43% 0.13146 155.75)",
+          "oklch(37.86% 0.13146 155.75)",
+          "oklch(49.29% 0.13146 155.75)",
+          "oklch(60.71% 0.13146 155.75)",
+          "oklch(72.14% 0.13146 155.75)",
+          "oklch(83.57% 0.13146 155.75)",
+          "oklch(95.00% 0.13146 155.75)"
+        ]
+      },
+      "primary-hover": {
+        "role": "primary",
+        "displayName": "Deep Action Green",
+        "canonical": "#1e6c41",
+        "tonalRamp": [
+          "oklch(15.00% 0.10227 154.77)",
+          "oklch(26.43% 0.10227 154.77)",
+          "oklch(37.86% 0.10227 154.77)",
+          "oklch(49.29% 0.10227 154.77)",
+          "oklch(60.71% 0.10227 154.77)",
+          "oklch(72.14% 0.10227 154.77)",
+          "oklch(83.57% 0.10227 154.77)",
+          "oklch(95.00% 0.10227 154.77)"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "#262626",
+        "tonalRamp": [
+          "oklch(15.00% 0.00000 0.00)",
+          "oklch(26.43% 0.00000 0.00)",
+          "oklch(37.86% 0.00000 0.00)",
+          "oklch(49.29% 0.00000 0.00)",
+          "oklch(60.71% 0.00000 0.00)",
+          "oklch(72.14% 0.00000 0.00)",
+          "oklch(83.57% 0.00000 0.00)",
+          "oklch(95.00% 0.00000 0.00)"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Muted",
+        "canonical": "#666",
+        "tonalRamp": [
+          "oklch(15.00% 0.00000 0.00)",
+          "oklch(26.43% 0.00000 0.00)",
+          "oklch(37.86% 0.00000 0.00)",
+          "oklch(49.29% 0.00000 0.00)",
+          "oklch(60.71% 0.00000 0.00)",
+          "oklch(72.14% 0.00000 0.00)",
+          "oklch(83.57% 0.00000 0.00)",
+          "oklch(95.00% 0.00000 0.00)"
+        ]
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "Paper White",
+        "canonical": "#fff",
+        "tonalRamp": [
+          "oklch(15.00% 0.00000 0.00)",
+          "oklch(26.43% 0.00000 0.00)",
+          "oklch(37.86% 0.00000 0.00)",
+          "oklch(49.29% 0.00000 0.00)",
+          "oklch(60.71% 0.00000 0.00)",
+          "oklch(72.14% 0.00000 0.00)",
+          "oklch(83.57% 0.00000 0.00)",
+          "oklch(95.00% 0.00000 0.00)"
+        ]
+      },
+      "canvas": {
+        "role": "neutral",
+        "displayName": "Working Canvas",
+        "canonical": "#f5f5f5",
+        "tonalRamp": [
+          "oklch(15.00% 0.00000 0.00)",
+          "oklch(26.43% 0.00000 0.00)",
+          "oklch(37.86% 0.00000 0.00)",
+          "oklch(49.29% 0.00000 0.00)",
+          "oklch(60.71% 0.00000 0.00)",
+          "oklch(72.14% 0.00000 0.00)",
+          "oklch(83.57% 0.00000 0.00)",
+          "oklch(95.00% 0.00000 0.00)"
+        ]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "Fine Line",
+        "canonical": "#e5e5e5",
+        "tonalRamp": [
+          "oklch(15.00% 0.00000 0.00)",
+          "oklch(26.43% 0.00000 0.00)",
+          "oklch(37.86% 0.00000 0.00)",
+          "oklch(49.29% 0.00000 0.00)",
+          "oklch(60.71% 0.00000 0.00)",
+          "oklch(72.14% 0.00000 0.00)",
+          "oklch(83.57% 0.00000 0.00)",
+          "oklch(95.00% 0.00000 0.00)"
+        ]
+      },
+      "soft-green": {
+        "role": "primary",
+        "displayName": "Soft Green",
+        "canonical": "#daf1e3",
+        "tonalRamp": [
+          "oklch(15.00% 0.03057 159.08)",
+          "oklch(26.43% 0.03057 159.08)",
+          "oklch(37.86% 0.03057 159.08)",
+          "oklch(49.29% 0.03057 159.08)",
+          "oklch(60.71% 0.03057 159.08)",
+          "oklch(72.14% 0.03057 159.08)",
+          "oklch(83.57% 0.03057 159.08)",
+          "oklch(95.00% 0.03057 159.08)"
+        ]
+      },
+      "footer": {
+        "role": "neutral",
+        "displayName": "Footer White",
+        "canonical": "#fafafa",
+        "tonalRamp": [
+          "oklch(15.00% 0.00000 0.00)",
+          "oklch(26.43% 0.00000 0.00)",
+          "oklch(37.86% 0.00000 0.00)",
+          "oklch(49.29% 0.00000 0.00)",
+          "oklch(60.71% 0.00000 0.00)",
+          "oklch(72.14% 0.00000 0.00)",
+          "oklch(83.57% 0.00000 0.00)",
+          "oklch(95.00% 0.00000 0.00)"
+        ]
+      },
+      "placeholder": {
+        "role": "neutral",
+        "displayName": "Placeholder",
+        "canonical": "#707070",
+        "tonalRamp": [
+          "oklch(15.00% 0.00000 0.00)",
+          "oklch(26.43% 0.00000 0.00)",
+          "oklch(37.86% 0.00000 0.00)",
+          "oklch(49.29% 0.00000 0.00)",
+          "oklch(60.71% 0.00000 0.00)",
+          "oklch(72.14% 0.00000 0.00)",
+          "oklch(83.57% 0.00000 0.00)",
+          "oklch(95.00% 0.00000 0.00)"
+        ]
+      },
+      "nav-ink": {
+        "role": "neutral",
+        "displayName": "Navigation Ink",
+        "canonical": "#303936",
+        "tonalRamp": [
+          "oklch(15.00% 0.01319 173.39)",
+          "oklch(26.43% 0.01319 173.39)",
+          "oklch(37.86% 0.01319 173.39)",
+          "oklch(49.29% 0.01319 173.39)",
+          "oklch(60.71% 0.01319 173.39)",
+          "oklch(72.14% 0.01319 173.39)",
+          "oklch(83.57% 0.01319 173.39)",
+          "oklch(95.00% 0.01319 173.39)"
+        ]
+      },
+      "nav-hover-ink": {
+        "role": "primary",
+        "displayName": "Navigation Hover Ink",
+        "canonical": "#176d4b",
+        "tonalRamp": [
+          "oklch(15.00% 0.09649 161.50)",
+          "oklch(26.43% 0.09649 161.50)",
+          "oklch(37.86% 0.09649 161.50)",
+          "oklch(49.29% 0.09649 161.50)",
+          "oklch(60.71% 0.09649 161.50)",
+          "oklch(72.14% 0.09649 161.50)",
+          "oklch(83.57% 0.09649 161.50)",
+          "oklch(95.00% 0.09649 161.50)"
+        ]
+      },
+      "settings-selected": {
+        "role": "primary",
+        "displayName": "Settings Selection Wash",
+        "canonical": "#eaf6ef",
+        "tonalRamp": [
+          "oklch(15.00% 0.01568 160.62)",
+          "oklch(26.43% 0.01568 160.62)",
+          "oklch(37.86% 0.01568 160.62)",
+          "oklch(49.29% 0.01568 160.62)",
+          "oklch(60.71% 0.01568 160.62)",
+          "oklch(72.14% 0.01568 160.62)",
+          "oklch(83.57% 0.01568 160.62)",
+          "oklch(95.00% 0.01568 160.62)"
+        ]
+      },
+      "chip-neutral": {
+        "role": "neutral",
+        "displayName": "Chip Neutral",
+        "canonical": "#eee",
+        "tonalRamp": [
+          "oklch(15.00% 0.00000 0.00)",
+          "oklch(26.43% 0.00000 0.00)",
+          "oklch(37.86% 0.00000 0.00)",
+          "oklch(49.29% 0.00000 0.00)",
+          "oklch(60.71% 0.00000 0.00)",
+          "oklch(72.14% 0.00000 0.00)",
+          "oklch(83.57% 0.00000 0.00)",
+          "oklch(95.00% 0.00000 0.00)"
+        ]
+      },
+      "chip-muted": {
+        "role": "neutral",
+        "displayName": "Chip Muted",
+        "canonical": "#606460",
+        "tonalRamp": [
+          "oklch(15.00% 0.00798 145.45)",
+          "oklch(26.43% 0.00798 145.45)",
+          "oklch(37.86% 0.00798 145.45)",
+          "oklch(49.29% 0.00798 145.45)",
+          "oklch(60.71% 0.00798 145.45)",
+          "oklch(72.14% 0.00798 145.45)",
+          "oklch(83.57% 0.00798 145.45)",
+          "oklch(95.00% 0.00798 145.45)"
+        ]
+      },
+      "warning-bg": {
+        "role": "semantic",
+        "displayName": "Warning Surface",
+        "canonical": "#fff2b4",
+        "tonalRamp": [
+          "oklch(15.00% 0.08000 97.68)",
+          "oklch(26.43% 0.08000 97.68)",
+          "oklch(37.86% 0.08000 97.68)",
+          "oklch(49.29% 0.08000 97.68)",
+          "oklch(60.71% 0.08000 97.68)",
+          "oklch(72.14% 0.08000 97.68)",
+          "oklch(83.57% 0.08000 97.68)",
+          "oklch(95.00% 0.08000 97.68)"
+        ]
+      },
+      "warning-ink": {
+        "role": "semantic",
+        "displayName": "Warning Ink",
+        "canonical": "#82570d",
+        "tonalRamp": [
+          "oklch(15.00% 0.09930 73.98)",
+          "oklch(26.43% 0.09930 73.98)",
+          "oklch(37.86% 0.09930 73.98)",
+          "oklch(49.29% 0.09930 73.98)",
+          "oklch(60.71% 0.09930 73.98)",
+          "oklch(72.14% 0.09930 73.98)",
+          "oklch(83.57% 0.09930 73.98)",
+          "oklch(95.00% 0.09930 73.98)"
+        ]
+      },
+      "rejected-bg": {
+        "role": "semantic",
+        "displayName": "Rejection Surface",
+        "canonical": "#ffe3e4",
+        "tonalRamp": [
+          "oklch(15.00% 0.03086 15.25)",
+          "oklch(26.43% 0.03086 15.25)",
+          "oklch(37.86% 0.03086 15.25)",
+          "oklch(49.29% 0.03086 15.25)",
+          "oklch(60.71% 0.03086 15.25)",
+          "oklch(72.14% 0.03086 15.25)",
+          "oklch(83.57% 0.03086 15.25)",
+          "oklch(95.00% 0.03086 15.25)"
+        ]
+      },
+      "rejected-ink": {
+        "role": "semantic",
+        "displayName": "Rejection Ink",
+        "canonical": "#a22529",
+        "tonalRamp": [
+          "oklch(15.00% 0.16101 24.50)",
+          "oklch(26.43% 0.16101 24.50)",
+          "oklch(37.86% 0.16101 24.50)",
+          "oklch(49.29% 0.16101 24.50)",
+          "oklch(60.71% 0.16101 24.50)",
+          "oklch(72.14% 0.16101 24.50)",
+          "oklch(83.57% 0.16101 24.50)",
+          "oklch(95.00% 0.16101 24.50)"
+        ]
+      },
+      "danger": {
+        "role": "semantic",
+        "displayName": "Destructive Red",
+        "canonical": "#bd4a43",
+        "tonalRamp": [
+          "oklch(15.00% 0.14988 26.48)",
+          "oklch(26.43% 0.14988 26.48)",
+          "oklch(37.86% 0.14988 26.48)",
+          "oklch(49.29% 0.14988 26.48)",
+          "oklch(60.71% 0.14988 26.48)",
+          "oklch(72.14% 0.14988 26.48)",
+          "oklch(83.57% 0.14988 26.48)",
+          "oklch(95.00% 0.14988 26.48)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Workspace Headline",
+        "purpose": "Aligned operational workspace titles; not a universal override of every inherited heading."
+      },
+      "editor-title": {
+        "displayName": "Editor Title",
+        "purpose": "Product and related drawer titles at the operational heading scale."
+      },
+      "card-title": {
+        "displayName": "Card Title",
+        "purpose": "Settings-card titles and compact section headings."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "The 16px operational reading baseline."
+      },
+      "label": {
+        "displayName": "Field Label",
+        "purpose": "Full-size form labels."
+      },
+      "action": {
+        "displayName": "Action",
+        "purpose": "Shared buttons, Shell links, and menu tabs."
+      },
+      "supporting": {
+        "displayName": "Supporting Copy",
+        "purpose": "Field hints and secondary copy; local supporting variants retain other observed weights."
+      },
+      "payment-chip": {
+        "displayName": "Payment Chip",
+        "purpose": "The payment-badge type role; other chip families retain their local typography."
+      }
+    },
+    "shadows": [
+      {
+        "name": "surface",
+        "value": "0 1px 2px #0000000d",
+        "purpose": "Shared operational cards and panels."
+      },
+      {
+        "name": "control",
+        "value": "0 1px 2px #00000012",
+        "purpose": "Shared operational buttons."
+      },
+      {
+        "name": "popover",
+        "value": "0 3px 8px #00000029",
+        "purpose": "Operational context menus and date popover."
+      },
+      {
+        "name": "field-focus",
+        "value": "0 0 0 3px rgba(75,130,107,.12)",
+        "purpose": "Inherited focused-field halo beneath the separate keyboard outline."
+      },
+      {
+        "name": "generic-modal",
+        "value": "0 35px 90px rgba(9,16,13,.3)",
+        "purpose": "Retained shared modal-card depth, not a standard operational card shadow."
+      },
+      {
+        "name": "settings-drawer",
+        "value": "-18px 0 55px rgba(20, 32, 26, .2)",
+        "purpose": "Retained narrow settings editor depth."
+      },
+      {
+        "name": "settings-confirmation",
+        "value": "0 25px 75px rgba(12, 23, 17, .27)",
+        "purpose": "Retained blocking settings confirmation depth."
+      }
+    ],
+    "motion": [
+      {
+        "name": "control-colors",
+        "value": "background-color 120ms ease-out, border-color 120ms ease-out",
+        "purpose": "Shared operational controls; primary hover has no transform."
+      },
+      {
+        "name": "shell-link",
+        "value": ".16s ease",
+        "purpose": "Retained Shell-link state transition."
+      },
+      {
+        "name": "settings-section-entry",
+        "value": "page-in .22s ease both",
+        "purpose": "Retained settings section entry; unlike the main page stack, it still animates unless reduced motion is requested."
+      },
+      {
+        "name": "product-drawer-entry",
+        "value": "drawer-in .22s ease both",
+        "purpose": "Retained product drawer entrance; its former large shadow is removed by the operational layer."
+      },
+      {
+        "name": "settings-drawer-entry",
+        "value": "drawer-in .2s ease both",
+        "purpose": "Retained settings drawer entrance, disabled by the component reduced-motion rule."
+      },
+      {
+        "name": "generic-modal-entry",
+        "value": "modal-in .2s ease",
+        "purpose": "Retained generic modal entrance, not a new global entrance animation."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "operational-mobile-max",
+        "value": "900px"
+      },
+      {
+        "name": "operational-desktop-min",
+        "value": "901px"
+      },
+      {
+        "name": "catalog-compact-max",
+        "value": "680px"
+      },
+      {
+        "name": "settings-form-compact-max",
+        "value": "640px"
+      },
+      {
+        "name": "kitchen-container-max",
+        "value": "640px"
+      },
+      {
+        "name": "operational-narrow-max",
+        "value": "600px"
+      },
+      {
+        "name": "order-toolbar-wrap-max",
+        "value": "560px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The shared filled action, with a deeper hover, no movement, visible focus, and the operational touch-size rule.",
+      "html": "<button class=\"ds-button-primary\" type=\"button\">Guardar</button>",
+      "css": ".ds-button-primary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 36px; padding: 6px 11px; border: 1px solid var(--pos-primary, #25824f); border-radius: 7px; background: var(--pos-primary, #25824f); color: #fff; font-family: Inter, sans-serif; font-size: 16px; font-weight: 550; line-height: 1.45; box-shadow: 0 1px 2px #00000012; cursor: pointer; transition: background-color 120ms ease-out, border-color 120ms ease-out; } .ds-button-primary:hover:not(:disabled) { background: var(--pos-hover, #1e6c41); border-color: var(--pos-hover, #1e6c41); transform: none; } .ds-button-primary:focus-visible { outline: 2px solid var(--pos-primary, #25824f); outline-offset: 3px; } .ds-button-primary:disabled { opacity: .48; cursor: not-allowed; } @media (pointer: coarse), (max-width: 900px) { .ds-button-primary { min-height: 44px; } } @media (prefers-reduced-motion: reduce) { .ds-button-primary { transition: none; } }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "A neutral white alternative. In the final scoped cascade the border remains neutral on hover.",
+      "html": "<button class=\"ds-button-secondary\" type=\"button\">Cancelar</button>",
+      "css": ".ds-button-secondary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 36px; padding: 6px 11px; border: 1px solid var(--line, #e5e5e5); border-radius: 7px; background: #fff; color: var(--ink, #262626); font-family: Inter, sans-serif; font-size: 16px; font-weight: 550; line-height: 1.45; box-shadow: 0 1px 2px #00000012; cursor: pointer; transition: background-color 120ms ease-out, border-color 120ms ease-out; } .ds-button-secondary:hover:not(:disabled) { background: #fff; border-color: var(--line, #e5e5e5); transform: none; } .ds-button-secondary:focus-visible { outline: 2px solid var(--pos-primary, #25824f); outline-offset: 3px; } .ds-button-secondary:disabled { opacity: .48; cursor: not-allowed; } @media (pointer: coarse), (max-width: 900px) { .ds-button-secondary { min-height: 44px; } } @media (prefers-reduced-motion: reduce) { .ds-button-secondary { transition: none; } }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "The existing ghost API resolves to the same white bordered treatment in the operational scope; no new hover color is invented.",
+      "html": "<button class=\"ds-button-ghost\" type=\"button\">Vista previa</button>",
+      "css": ".ds-button-ghost { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 36px; padding: 6px 11px; border: 1px solid var(--line, #e5e5e5); border-radius: 7px; background: #fff; color: var(--ink, #262626); font-family: Inter, sans-serif; font-size: 16px; font-weight: 550; line-height: 1.45; box-shadow: 0 1px 2px #00000012; cursor: pointer; transition: background-color 120ms ease-out, border-color 120ms ease-out; } .ds-button-ghost:hover:not(:disabled) { background: #fff; border-color: var(--line, #e5e5e5); transform: none; } .ds-button-ghost:focus-visible { outline: 2px solid var(--pos-primary, #25824f); outline-offset: 3px; } .ds-button-ghost:disabled { opacity: .48; cursor: not-allowed; } @media (pointer: coarse), (max-width: 900px) { .ds-button-ghost { min-height: 44px; } } @media (prefers-reduced-motion: reduce) { .ds-button-ghost { transition: none; } }"
+    },
+    {
+      "name": "Danger Button",
+      "kind": "button",
+      "refersTo": "button-danger",
+      "description": "The retained destructive red on the shared operational button geometry; its source defines no distinct hover or pressed color.",
+      "html": "<button class=\"ds-button-danger\" type=\"button\">Descartar cambios</button>",
+      "css": ".ds-button-danger { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 36px; padding: 6px 11px; border: 1px solid transparent; border-radius: 7px; background: var(--red-500, #bd4a43); color: #fff; font-family: Inter, sans-serif; font-size: 16px; font-weight: 550; line-height: 1.45; box-shadow: 0 1px 2px #00000012; cursor: pointer; transition: background-color 120ms ease-out, border-color 120ms ease-out; } .ds-button-danger:hover:not(:disabled) { background: var(--red-500, #bd4a43); border-color: transparent; transform: none; } .ds-button-danger:focus-visible { outline: 2px solid var(--pos-primary, #25824f); outline-offset: 3px; } .ds-button-danger:disabled { opacity: .48; cursor: not-allowed; } @media (pointer: coarse), (max-width: 900px) { .ds-button-danger { min-height: 44px; } } @media (prefers-reduced-motion: reduce) { .ds-button-danger { transition: none; } }"
+    },
+    {
+      "name": "Labeled Text Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "A full-size label over a white field. Focus keeps the scoped border, inherits a soft halo, and adds the shared keyboard outline.",
+      "html": "<label class=\"ds-field\">Nombre de empresa<input class=\"ds-field-input\" type=\"text\" placeholder=\"Nombre de empresa\" /></label>",
+      "css": ".ds-field { display: grid; gap: 6px; color: var(--ink, #262626); font-family: Inter, sans-serif; font-size: 16px; font-weight: 450; line-height: 1.45; } .ds-field-input { width: 100%; min-width: 0; padding: 7px 12px; border: 1px solid var(--line, #e5e5e5); border-radius: 7px; background: #fff; color: var(--ink, #262626); font-family: Inter, sans-serif; font-size: 16px; font-weight: 450; line-height: 1.45; caret-color: var(--pos-primary, #25824f); outline: 0; } .ds-field-input::placeholder { color: #707070; opacity: 1; } .ds-field-input:hover { border-color: var(--line, #e5e5e5); } .ds-field-input:focus { border-color: var(--line, #e5e5e5); box-shadow: 0 0 0 3px rgba(75,130,107,.12); } .ds-field-input:focus-visible { outline: 2px solid var(--pos-primary, #25824f); outline-offset: 3px; } @media (pointer: coarse), (max-width: 900px) { .ds-field-input { min-height: 44px; } }"
+    },
+    {
+      "name": "Shell Navigation",
+      "kind": "nav",
+      "refersTo": "navigation",
+      "description": "The sidebar link anatomy: outline icons, green active text without a filled capsule, and a gray hover wash. This sample does not implement routing or the mobile drawer.",
+      "html": "<nav class=\"ds-shell-nav\" aria-label=\"Navegaci&oacute;n principal\"><a class=\"ds-shell-link\" href=\"#ds-inicio\"><svg class=\"ds-shell-icon\" xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-6v-7H10v7H4a1 1 0 0 1-1-1z\"/></svg><span class=\"ds-shell-label\">Inicio</span></a><a class=\"ds-shell-link ds-shell-link-active\" href=\"#ds-menu\" aria-current=\"page\"><svg class=\"ds-shell-icon\" xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M12 7v14\"/><path d=\"M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z\"/><path d=\"M6 8h2M6 12h2M16 8h2M16 12h2\"/></svg><span class=\"ds-shell-label\">Men&uacute;</span></a></nav>",
+      "css": ".ds-shell-nav { display: grid; gap: 0; padding: 14px 0; background: #fff; font-family: Inter, sans-serif; font-size: 16px; line-height: 1.45; } .ds-shell-link { display: flex; align-items: center; gap: 12px; min-height: 40px; padding: 8px 12px; border-radius: 7px; background: transparent; color: #303936; font-weight: 550; text-decoration: none; transition: .16s ease; } .ds-shell-link:hover { color: #176d4b; background: #f5f5f5; } .ds-shell-link.ds-shell-link-active { color: var(--pos-primary, #25824f); background: transparent; box-shadow: none; } .ds-shell-link.ds-shell-link-active:hover { background: #f5f5f5; } .ds-shell-link:focus-visible { outline: 2px solid var(--pos-primary, #25824f); outline-offset: 3px; } .ds-shell-icon { width: 18px; }"
+    },
+    {
+      "name": "Section Tabs",
+      "kind": "nav",
+      "refersTo": "section-tabs",
+      "description": "The menu tab visual states: neutral underlines at rest and Selection Green for the active item. Selection changes remain the app's responsibility.",
+      "html": "<div class=\"ds-tabs\"><button class=\"ds-tab ds-tab-active\" type=\"button\">Productos</button><button class=\"ds-tab\" type=\"button\">Personalizaciones</button><button class=\"ds-tab\" type=\"button\">Promociones</button></div>",
+      "css": ".ds-tabs { display: flex; gap: 8px; margin: 0 0 4px; overflow-x: auto; overflow-y: hidden; border-bottom: 1px solid var(--line, #e5e5e5); scrollbar-width: none; font-family: Inter, sans-serif; font-size: 16px; line-height: 1.45; } .ds-tab { position: relative; min-height: 44px; padding: 0 12px; border: 0; background: transparent; color: var(--ink, #262626); font-family: Inter, sans-serif; font-size: 16px; font-weight: 550; line-height: 1.45; cursor: pointer; } .ds-tab::after { content: \"\"; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; border-radius: 3px 3px 0 0; background: #d7d7d7; } .ds-tab-active::after { background: var(--pos-accent, #35a167); } .ds-tab:hover { color: var(--ink, #262626); } .ds-tab:focus-visible { outline: 2px solid var(--pos-primary, #25824f); outline-offset: 3px; } @media (max-width: 680px) { .ds-tab { flex: 0 0 auto; } } @media (max-width: 600px) { .ds-tabs { gap: 4px; } .ds-tab { padding-inline: 8px; font-size: 14px; } }"
+    },
+    {
+      "name": "Settings Navigation",
+      "kind": "nav",
+      "refersTo": "settings-navigation",
+      "description": "The local settings-navigation variant retains a pale green active fill and regular inactive labels. The full app replaces this list with a select at 900px.",
+      "html": "<nav class=\"ds-settings-nav\" aria-label=\"Secciones de configuraci&oacute;n\"><button class=\"ds-settings-nav-item ds-settings-nav-active\" type=\"button\" aria-current=\"page\">General</button><button class=\"ds-settings-nav-item\" type=\"button\">Datos de sucursal</button></nav>",
+      "css": ".ds-settings-nav { padding: 8px; border: 1px solid #dfe4e1; border-radius: 8px; background: #fff; box-shadow: none; font-family: Inter, sans-serif; font-size: 16px; line-height: 1.45; } .ds-settings-nav-item { width: 100%; min-height: 40px; padding: 8px 10px; display: flex; align-items: center; gap: 10px; border: 0; border-radius: 8px; color: #323a36; background: transparent; text-align: left; font-family: Inter, sans-serif; font-size: 16px; font-weight: 450; line-height: 1.45; cursor: pointer; } .ds-settings-nav-item:hover { color: #177d54; background: #f3f8f5; } .ds-settings-nav-item.ds-settings-nav-active { background: #eaf6ef; color: var(--pos-primary, #25824f); font-weight: 550; } .ds-settings-nav-item:focus-visible { outline: 2px solid var(--pos-primary, #25824f); outline-offset: 3px; }"
+    },
+    {
+      "name": "Payment Status Chip",
+      "kind": "chip",
+      "refersTo": "payment-chip",
+      "description": "Noninteractive payment labels with pending/review warning tones and rejected red. Written text and the marker distinguish states; hover and press styles are intentionally absent.",
+      "html": "<span class=\"ds-payment-chip ds-payment-pending\"><i class=\"ds-payment-dot\" aria-hidden=\"true\"></i>Pendiente</span> <span class=\"ds-payment-chip ds-payment-review\"><i class=\"ds-payment-dot\" aria-hidden=\"true\"></i>Pendiente de revisi&oacute;n</span> <span class=\"ds-payment-chip ds-payment-rejected\"><i class=\"ds-payment-dot\" aria-hidden=\"true\"></i>Rechazado</span>",
+      "css": ".ds-payment-chip { width: fit-content; padding: 2px 9px; display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; color: #606460; background: #eee; font-family: Inter, sans-serif; font-size: 14px; font-weight: 600; line-height: 1.45; } .ds-payment-dot { width: 7px; height: 7px; flex-shrink: 0; background: currentColor; border-radius: 50%; } .ds-payment-pending, .ds-payment-review { background: #fff2b4; color: #82570d; } .ds-payment-pending .ds-payment-dot { background: none; border: 1px solid currentColor; } .ds-payment-rejected { background: #ffe3e4; color: #a22529; }"
+    },
+    {
+      "name": "Settings Card",
+      "kind": "card",
+      "refersTo": "settings-card",
+      "description": "A white shallow card with a divided title header and labeled content. Header dividers retain their local value; content padding tightens at the existing 640px breakpoint.",
+      "html": "<section class=\"ds-settings-card\"><header class=\"ds-settings-card-header\"><h3 class=\"ds-settings-card-title\">Datos de empresa</h3></header><div class=\"ds-settings-card-content\"><label class=\"ds-settings-card-label\">Nombre de empresa<input class=\"ds-settings-card-input\" value=\"Restaurante de prueba\" /></label></div></section>",
+      "css": ".ds-settings-card { min-width: 0; border: 1px solid var(--line, #e5e5e5); border-radius: 12px; background: #fff; box-shadow: var(--shadow, 0 1px 2px #0000000d); font-family: Inter, sans-serif; font-size: 16px; font-weight: 450; line-height: 1.45; } .ds-settings-card-header { min-height: 56px; padding: 15px 18px; border-bottom: 1px solid #e8ece9; } .ds-settings-card-title { margin: 0; font-size: 16px; font-weight: 550; line-height: 1.45; letter-spacing: 0; } .ds-settings-card-content { padding: 18px; min-width: 0; } .ds-settings-card-label { display: grid; gap: 6px; color: var(--ink, #262626); font-size: 16px; font-weight: 450; } .ds-settings-card-input { width: 100%; min-width: 0; padding: 7px 12px; border: 1px solid var(--line, #e5e5e5); border-radius: 7px; background: #fff; color: var(--ink, #262626); font-family: Inter, sans-serif; font-size: 16px; font-weight: 450; line-height: 1.45; caret-color: var(--pos-primary, #25824f); outline: 0; } .ds-settings-card-input:hover { border-color: var(--line, #e5e5e5); } .ds-settings-card-input:focus { border-color: var(--line, #e5e5e5); box-shadow: 0 0 0 3px rgba(75,130,107,.12); } .ds-settings-card-input:focus-visible { outline: 2px solid var(--pos-primary, #25824f); outline-offset: 3px; } @media (max-width: 640px) { .ds-settings-card-content { padding: 15px; } } @media (pointer: coarse), (max-width: 900px) { .ds-settings-card-input { min-height: 44px; } }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Working Counter",
+    "overview": "Escalar AI POS uses a quiet, compact working surface: a light gray canvas, white containers, fine dividers, and green cues that direct attention without recoloring the entire workspace. The Maspedidos reference informs the operational density and familiar controls; the visible identity remains Escalar AI POS.\n\nThis document describes the implemented authenticated interface inside body.pos-operational, including body-mounted dialog portals. It is not a redesign proposal or a visual contract for login and the public menu, which retain their separate incumbent presentation. Shared primitives are consistent, while tables, kitchen cards, and split editors retain their own useful structures.",
+    "keyCharacteristics": [
+      "Self-hosted Inter, readable body copy, and compact section headings.",
+      "White bordered surfaces on a neutral gray workspace.",
+      "Distinct green roles for primary actions and selection.",
+      "Compact desktop controls with enlarged mobile and coarse-pointer targets.",
+      "Persistent context, understated outline icons, and contextual editors."
+    ],
+    "rules": [
+      {
+        "name": "Two Greens",
+        "body": "Use Primary Green for filled white-text actions and keyboard outlines; use Selection Green for tab indicators and the implemented selection accents. They are distinct tokens, not interchangeable aliases.",
+        "section": "colors"
+      },
+      {
+        "name": "Reading Scale",
+        "body": "Keep the operational body and form labels at the body scale. Use the headline scale for the aligned workspace titles; preserve smaller metadata as a secondary layer rather than shrinking the entire interface.",
+        "section": "typography"
+      },
+      {
+        "name": "Surface Before Shadow",
+        "body": "Use white fill and a fine boundary to establish ordinary containers. Keep stronger shadows local to overlays and floating controls rather than applying them to every card.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do keep this system scoped to the authenticated operational body, including its dialog portals.",
+      "Do retain the Escalar AI POS name and existing identity assets.",
+      "Do use Primary Green for primary buttons and Selection Green for the established selection cues.",
+      "Do preserve the readable body scale, compact headings, and enlarged mobile/coarse-pointer controls.",
+      "Do retain visible focus, written status labels, and the existing dialog focus behavior.",
+      "Do reuse the appropriate list, kitchen-card, or editor structure instead of forcing every module into an identical layout."
+    ],
+    "donts": [
+      "Don't restyle login or the public menu with the operational tokens.",
+      "Don't import Maspedidos branding, marketing copy, or unsupported controls.",
+      "Don't replace the neutral operational canvas with decorative gradients or a dark sidebar.",
+      "Don't add large entrance effects or uniform raised-card styling to the aligned workspace.",
+      "Don't treat component-specific legacy values as a new global palette or silently normalize them while following this document.",
+      "Don't treat the synthesized tonal ramps in the sidecar as implemented application tokens."
+    ]
+  }
+}

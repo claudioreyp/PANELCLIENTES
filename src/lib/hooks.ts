@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { supabase } from "./supabase";
+import { useCallback, useEffect, useRef, useState, type SetStateAction } from "react";
+import { subscribeBranch, defaultRealtimeScope } from "./branch-realtime";
+import { useQuerySession } from "./query-session";
 
 export function usePolling<T>(loader: () => Promise<T>, dependencies: unknown[], intervalMs = 15000) {
-  const [data, setData] = useState<T | null>(null);
+  const [data, setDataState] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const request = useRef(0);
@@ -15,7 +16,7 @@ export function usePolling<T>(loader: () => Promise<T>, dependencies: unknown[],
     try {
       const next = await loaderRef.current();
       if (current === request.current) {
-        setData(next);
+        setDataState(next);
         setError(null);
       }
     } catch (caught) {
@@ -35,48 +36,23 @@ export function usePolling<T>(loader: () => Promise<T>, dependencies: unknown[],
     };
   }, [dependencyKey, intervalMs, refresh]);
 
+  const setData = useCallback((next: SetStateAction<T | null>) => {
+    // A local mutation is newer than any fetch already in flight. Invalidating
+    // those requests prevents an old response from hiding a just-saved record.
+    request.current += 1;
+    setDataState(next);
+    setError(null);
+  }, []);
+
   return { data, loading, error, refresh, setData };
 }
 
 export function useBranchRealtime(branchId: number | undefined, onEvent: () => void) {
   const callback = useRef(onEvent);
   callback.current = onEvent;
+  const cache = useQuerySession();
   useEffect(() => {
     if (!branchId) return;
-    let websocket: WebSocket | null = null;
-    let retry: number | undefined;
-    let stopped = false;
-
-    async function connect() {
-      const apiBase = (import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api/v1").replace(/\/api\/v1\/?$/, "");
-      const wsBase = apiBase.replace(/^http/, "ws");
-      const params = new URLSearchParams();
-      if (localStorage.getItem("impulsa.authMode") === "dev" && import.meta.env.VITE_DEV_AUTH_TOKEN) {
-        params.set("dev_auth", import.meta.env.VITE_DEV_AUTH_TOKEN);
-        params.set("user_id", "dev-owner");
-      } else {
-        const session = await supabase?.auth.getSession();
-        if (session?.data.session?.access_token) params.set("access_token", session.data.session.access_token);
-      }
-      if (stopped) return;
-      websocket = new WebSocket(`${wsBase}/api/v1/ws/branches/${branchId}?${params}`);
-      websocket.onmessage = (message) => {
-        try {
-          const event = JSON.parse(message.data) as { event?: string };
-          if (event.event !== "connected") callback.current();
-        } catch {
-          callback.current();
-        }
-      };
-      websocket.onclose = () => {
-        if (!stopped) retry = window.setTimeout(connect, 4000);
-      };
-    }
-    void connect();
-    return () => {
-      stopped = true;
-      if (retry) window.clearTimeout(retry);
-      websocket?.close();
-    };
-  }, [branchId]);
+    return subscribeBranch(cache || defaultRealtimeScope, branchId, () => callback.current());
+  }, [branchId, cache]);
 }

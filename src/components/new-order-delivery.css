@@ -1,0 +1,9 @@
+.new-order-delivery-location, .new-order-delivery-fee-confirm { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.new-order-delivery-location small, .new-order-delivery-fee-confirm small { line-height: 1.45; font-size: .875rem; }
+.new-order-delivery-fields input[readonly] { background: var(--paper-2); color: var(--ink); }
+.new-order-delivery-cost { display: grid; gap: 5px; }
+.new-order-delivery-money { position: relative; display: block; }
+.new-order-delivery-currency { position: absolute; inset-inline-start: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
+.new-order-delivery-cost .new-order-delivery-money input { --pos-input-padding-left: 42px; padding-inline-start: 42px; }
+.new-order-delivery-feedback { margin: 0; padding: 12px 24px; color: var(--red-500); font-size: .875rem; line-height: 1.45; }
+.new-order-delivery-pending { color: var(--muted); }

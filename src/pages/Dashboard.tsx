@@ -1,106 +1,94 @@
-import { ArrowRight, CalendarClock, ChefHat, CircleDollarSign, Clock3, ShoppingBag, Sparkles, TableProperties, Truck } from "lucide-react";
+import { Info, RefreshCcw } from "lucide-react";
+import { useId, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../lib/api";
-import { usePolling } from "../lib/hooks";
+import { normalizeCatalogPayload } from "../lib/catalog";
+import { catalogAvailabilityItems } from "../lib/availability";
+import { datePreset, dashboardMoney, limaToday, shortDay, type DashboardReport, type DateRange } from "../lib/dashboard";
+import { useBranchRealtime, usePolling } from "../lib/hooks";
 import { useTenant } from "../lib/tenant";
-import type { Order, Reservation, RestaurantTable } from "../types";
-import { EmptyState, ErrorState, LoadingState, MetricCard, Money, PageHeader, StatusPill } from "../components/ui";
-
-type Report = {
-  orders: number;
-  closed_orders: number;
-  gross_sales: number;
-  average_ticket: number;
-  by_channel: Record<string, number>;
-  by_payment_method: Record<string, number>;
-  top_products: { name: string; quantity: number; sales: number }[];
-};
-
-type DashboardData = {
-  report: Report;
-  orders: Order[];
-  tables: RestaurantTable[];
-  reservations: Reservation[];
-};
-
-const statusSteps = ["confirmed", "sent_to_kitchen", "preparing", "ready"];
+import type { Catalog } from "../types";
+import { DashboardDatePicker } from "../components/DashboardDatePicker";
+import { BarChart, ChartEmpty, DistributionChart, LineChart } from "../components/DashboardCharts";
+import "./dashboard.css";
 
 export function DashboardPage() {
+  const { branch } = useTenant();
+  return <DashboardBranch key={branch?.id || "none"} />;
+}
+
+function DashboardCard({ title, detail, children, className = "" }: { title: string; detail?: string; children: ReactNode; className?: string }) {
+  const descriptionId = useId();
+  const [showDetail, setShowDetail] = useState(false);
+  return <section className={`dashboard-card ${className}`} aria-label={title}>
+    <header className="dashboard-card-heading">
+      <h2>{title}</h2>
+      {detail && <div className="dashboard-help">
+        <button type="button" aria-label={`Información: ${title}`} aria-expanded={showDetail} aria-controls={descriptionId}
+          onClick={() => setShowDetail(!showDetail)} onBlur={() => setShowDetail(false)}
+          onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); setShowDetail(false); } }}><Info aria-hidden="true" /></button>
+        <p id={descriptionId} hidden={!showDetail} className="dashboard-help-content">{detail}</p>
+      </div>}
+    </header>
+    {children}
+  </section>;
+}
+
+function DashboardBranch() {
   const { branch, context } = useTenant();
-  const resource = usePolling<DashboardData>(async () => {
+  const today = limaToday();
+  const [range, setRange] = useState<DateRange>(() => datePreset("Hoy", today));
+  const activeRange = range.preset ? datePreset(range.preset, today) : range;
+  const canReport = [...(context?.roles || []), context?.role || ""].some((role) => ["superadmin", "owner", "manager", "cashier"].includes(role));
+  const catalogResource = usePolling(async () => {
     if (!branch) throw new Error("Selecciona una sucursal");
-    const [report, orders, tables, reservations] = await Promise.all([
-      api<Report>(`/reports/daily?branch_id=${branch.id}`),
-      api<Order[]>(`/orders?branch_id=${branch.id}&limit=8`),
-      api<RestaurantTable[]>(`/tables?branch_id=${branch.id}`),
-      api<Reservation[]>(`/reservations?branch_id=${branch.id}`),
-    ]);
-    return { report, orders, tables, reservations };
+    return normalizeCatalogPayload(await api<Catalog>(`/catalog?branch_id=${branch.id}`));
   }, [branch?.id], 20000);
-
-  if (resource.loading && !resource.data) return <LoadingState />;
-  if (resource.error && !resource.data) return <ErrorState message={resource.error} onRetry={() => void resource.refresh()} />;
-  const data = resource.data!;
-  const activeOrders = data.orders.filter((order) => !["closed", "cancelled"].includes(order.status));
-  const occupied = data.tables.filter((table) => table.status === "occupied").length;
-  const upcoming = data.reservations.filter((reservation) => ["confirmed", "seated"].includes(reservation.status)).slice(0, 4);
-
-  return (
-    <div className="page-stack dashboard-page">
-      <PageHeader
-        eyebrow={`Hoy · ${branch?.name}`}
-        title={`Buen servicio, ${context?.business.name}`}
-        description="La operación del día, resumida para decidir rápido."
-        actions={<Link className="button button-primary" to="/pos">Nuevo pedido <ArrowRight /></Link>}
-      />
-      <section className="metrics-grid">
-        <MetricCard label="Venta cerrada" value={<Money value={data.report.gross_sales} />} hint={`${data.report.closed_orders} pedidos cobrados`} tone="green" />
-        <MetricCard label="Ticket promedio" value={<Money value={data.report.average_ticket} />} hint="Solo ventas cerradas" />
-        <MetricCard label="Pedidos activos" value={activeOrders.length} hint={`${data.report.orders} creados hoy`} tone="orange" />
-        <MetricCard label="Mesas ocupadas" value={`${occupied}/${data.tables.length}`} hint="Estado del salón" tone="blue" />
-      </section>
-      <section className="dashboard-grid">
-        <article className="panel panel-large">
-          <div className="panel-heading"><div><span className="eyebrow">Pulso de servicio</span><h2>Pedidos en marcha</h2></div><Link to="/pedidos">Ver todos</Link></div>
-          {activeOrders.length ? (
-            <div className="order-activity-list">
-              {activeOrders.slice(0, 6).map((order) => (
-                <div className="order-activity" key={order.id}>
-                  <div className="order-avatar">#{order.number.slice(-4)}</div>
-                  <div className="order-activity-main"><strong>{order.customer_name || (order.table_id ? `Mesa ${order.table_id}` : "Mostrador")}</strong><span>{order.items.map((item) => `${item.quantity}× ${item.name}`).join(" · ")}</span></div>
-                  <StatusPill value={order.status} />
-                  <strong><Money value={order.total} /></strong>
-                </div>
-              ))}
-            </div>
-          ) : <EmptyState title="Servicio tranquilo" detail="Los pedidos nuevos aparecerán aquí en tiempo real." />}
-        </article>
-        <article className="panel attention-panel">
-          <div className="panel-heading"><div><span className="eyebrow">Ahora</span><h2>Atención operativa</h2></div><Sparkles /></div>
-          <div className="attention-list">
-            <Link to="/cocina"><ChefHat /><div><strong>{activeOrders.filter((item) => statusSteps.includes(item.status)).length} en cocina</strong><span>Revisar tiempos de preparación</span></div><ArrowRight /></Link>
-            <Link to="/delivery"><Truck /><div><strong>{activeOrders.filter((item) => item.channel === "delivery").length} delivery</strong><span>Pedidos por asignar o entregar</span></div><ArrowRight /></Link>
-            <Link to="/reservas"><CalendarClock /><div><strong>{upcoming.length} reservas</strong><span>Próximas llegadas confirmadas</span></div><ArrowRight /></Link>
-          </div>
-        </article>
-        <article className="panel">
-          <div className="panel-heading"><div><span className="eyebrow">Salón</span><h2>Estado de mesas</h2></div><TableProperties /></div>
-          <div className="table-summary">
-            {(["available", "reserved", "occupied", "cleaning"] as const).map((status) => (
-              <div key={status}><span className={`table-dot table-${status}`} /><strong>{data.tables.filter((table) => table.status === status).length}</strong><small>{status.replace("available", "libres").replace("reserved", "reservadas").replace("occupied", "ocupadas").replace("cleaning", "limpieza")}</small></div>
-            ))}
-          </div>
-          <Link className="text-link" to="/mesas">Abrir plano del salón <ArrowRight /></Link>
-        </article>
-        <article className="panel">
-          <div className="panel-heading"><div><span className="eyebrow">Próximamente</span><h2>Reservas</h2></div><Clock3 /></div>
-          {upcoming.length ? <div className="compact-list">{upcoming.map((reservation) => <div key={reservation.id}><span>{new Date(reservation.start_at).toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" })}</span><div><strong>{reservation.customer_name}</strong><small>{reservation.party_size} personas</small></div><StatusPill value={reservation.status} /></div>)}</div> : <EmptyState title="Sin próximas reservas" detail="La agenda está libre por ahora." />}
-        </article>
-      </section>
-      <section className="quick-actions">
-        <Link to="/pos"><ShoppingBag /><span><strong>Abrir pedido</strong><small>Salón, llevar o delivery</small></span></Link>
-        <Link to="/caja"><CircleDollarSign /><span><strong>Revisar caja</strong><small>Apertura, movimientos y cierre</small></span></Link>
-      </section>
+  useBranchRealtime(branch?.id, catalogResource.refresh);
+  const unavailable = catalogResource.data ? catalogAvailabilityItems(catalogResource.data).filter((item) => !item.available) : [];
+  return <div className="dashboard-page">
+    <header className="dashboard-page-heading"><h1>Inicio</h1></header>
+    <div className="dashboard-content">
+      <div className="dashboard-toolbar"><DashboardDatePicker value={activeRange} today={today} onChange={setRange} /><button className="dashboard-button" type="button" aria-label="Actualizar disponibilidad" onClick={() => void catalogResource.refresh()}><RefreshCcw /></button></div>
+      <div className="dashboard-grid dashboard-stock">
+        {[{ name: "Productos agotados", modifier: false }, { name: "Personalizaciones agotadas", modifier: true }].map((panel) => {
+          const items = unavailable.filter((item) => (item.kind === "modifier") === panel.modifier);
+          return <DashboardCard key={panel.name} title={panel.name} detail="Disponibilidad actual">
+            {catalogResource.error ? <InlineRetry message="No se pudo actualizar la disponibilidad." onRetry={catalogResource.refresh} /> : null}
+            {!catalogResource.data ? <ChartEmpty>{catalogResource.loading ? "Cargando disponibilidad…" : "Disponibilidad no disponible"}</ChartEmpty> : items.length ? <ul className="dashboard-stock-list">{items.map((item) => <li key={item.key}><Link to="/disponibilidad"><strong>{item.name}</strong><small>{item.subtitle}</small></Link></li>)}</ul> : <ChartEmpty />}
+            <Link className="dashboard-card-link" to="/disponibilidad">Ver disponibilidad</Link>
+          </DashboardCard>;
+        })}
+      </div>
+      {canReport && branch && <DashboardAnalytics key={`${branch.id}:${activeRange.from}:${activeRange.to}`} branchId={branch.id} range={activeRange} />}
     </div>
-  );
+  </div>;
+}
+
+function InlineRetry({ message, onRetry }: { message: string; onRetry: () => Promise<void> }) {
+  return <div className="dashboard-inline-error" role="alert"><span>{message}</span><button type="button" className="dashboard-button" onClick={() => void onRetry()}>Reintentar</button></div>;
+}
+
+function DashboardAnalytics({ branchId, range }: { branchId: number; range: DateRange }) {
+  const resource = usePolling(() => api<DashboardReport>(`/reports/dashboard?branch_id=${branchId}&date_from=${range.from}&date_to=${range.to}`), [branchId, range.from, range.to], 20000);
+  useBranchRealtime(branchId, resource.refresh);
+  const report = resource.data;
+  if (!report) return <div aria-busy={resource.loading}>{resource.error ? <InlineRetry message="No se pudo cargar el resumen del período." onRetry={resource.refresh} /> : <div className="dashboard-grid dashboard-loading">{["Total de ventas", "Pedidos", "Envíos", "Ticket promedio"].map((title) => <DashboardCard key={title} title={title}><ChartEmpty>Cargando resumen…</ChartEmpty></DashboardCard>)}</div>}</div>;
+  const points = (key: "sales" | "orders" | "shipping") => report.series.map((point) => ({ label: report.granularity === "hour" ? point.key : shortDay(point.key), value: Number(point[key]) }));
+  const paymentLabels: Record<string, string> = { cash: "Efectivo", card: "Tarjeta", yape: "Yape", plin: "Plin", transfer: "Transferencia" };
+  return <>
+    {resource.error && <InlineRetry message="No se pudo actualizar el resumen. Se conservan los últimos datos del período." onRetry={resource.refresh} />}
+    <div className="dashboard-grid dashboard-analytics">
+      <DashboardCard title="Total de ventas" detail="Pedidos confirmados, después de descuentos y sin envío. Incluye pagos pendientes."><strong className="dashboard-metric">{dashboardMoney(report.sales)}</strong>{report.orders ? <LineChart label="Ventas por período" points={points("sales")} /> : <ChartEmpty />}</DashboardCard>
+      <DashboardCard title="Pedidos"><strong className="dashboard-metric">{report.orders}</strong>{report.orders ? <LineChart label="Pedidos por período" points={points("orders")} monetary={false} /> : <ChartEmpty />}</DashboardCard>
+      <DashboardCard title="Envíos"><strong className="dashboard-metric">{dashboardMoney(report.shipping)}</strong>{report.orders ? <LineChart label="Envíos por período" points={points("shipping")} /> : <ChartEmpty />}</DashboardCard>
+      <DashboardCard title="Ticket promedio"><div className="dashboard-average">{dashboardMoney(report.average_ticket, true)}</div></DashboardCard>
+      <DashboardCard title="Ventas promedio por día de semana" className="dashboard-weekdays">{range.from === range.to ? <ChartEmpty>Disponible solo para rangos de varios días</ChartEmpty> : report.orders ? <BarChart values={report.weekdays.map((item) => ({ name: item.name, value: item.sales === null ? null : Number(item.sales) }))} /> : <ChartEmpty />}</DashboardCard>
+      <DashboardCard title="Ventas por canal de venta">{report.orders ? <BarChart values={report.channels.map((item) => ({ name: item.name, value: Number(item.sales) }))} /> : <ChartEmpty />}</DashboardCard>
+      <DashboardCard title="Pedidos por canal de venta">{report.orders ? <BarChart monetary={false} values={report.channels.map((item) => ({ name: item.name, value: item.orders }))} /> : <ChartEmpty />}</DashboardCard>
+      <DashboardCard title="Métodos de pago más usados" detail="Cobros confirmados por fecha de pago; no equivalen a las ventas del período."><DistributionChart values={report.payment_methods.map((item) => ({ name: paymentLabels[item.name] || item.name, value: Number(item.amount) }))} /></DashboardCard>
+      <DashboardCard title="Total de ventas por opción de servicio"><DistributionChart values={report.services.map((item) => ({ name: item.name, value: Number(item.sales) }))} /></DashboardCard>
+      {[{ title: "Productos con más ventas", items: report.top_products }, { title: "Productos menos vendidos", items: report.bottom_products }].map(({ title, items }) => <DashboardCard key={title} title={title} detail="Por unidades vendidas en el período.">{items.length ? <ul className="dashboard-ranking">{items.map((item, index) => <li key={`${item.name}:${index}`}><span>{item.name}</span><small>{Number(item.quantity)} ({dashboardMoney(item.sales)})</small></li>)}</ul> : <ChartEmpty />}</DashboardCard>)}
+    </div>
+  </>;
 }

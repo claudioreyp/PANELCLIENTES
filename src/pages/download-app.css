@@ -1,0 +1,34 @@
+.download-app-heading { border-bottom: 1px solid var(--line); padding-bottom: 20px; }
+.download-app-heading h1 { margin: 0; font-size: 1.25rem; }
+body.pos-operational .download-app-heading h1:focus { outline: none; }
+.install-app-card { max-width: 700px; margin: 28px auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper); overflow: hidden; }
+.install-app-card > header { padding: 20px 24px; border-bottom: 1px solid var(--line); }
+.install-app-card h2 { margin: 0; font-size: 1rem; }
+.install-app-body { padding: 24px; }
+.install-app-body > .install-app-description { margin-top: 0; }
+.install-app-body p { line-height: 1.6; }
+.install-app-action { margin-top: 4px; }
+.install-app-guide { margin-top: 28px; }
+.install-app-body h3 { font-size: 16px; margin: 0 0 8px; font-weight: 600; }
+.install-app-guide ol { margin: 0; padding-left: 24px; line-height: 1.6; }
+.install-app-guide li + li { margin-top: 8px; }
+.install-app-note { margin: 24px 0 0; padding-top: 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+.install-app-success { display: flex; align-items: flex-start; gap: 12px; color: var(--pos-hover); background: var(--green-100); padding: 20px; border-radius: 8px; }
+.install-app-success > svg { flex-shrink: 0; width: 20px; height: 20px; }
+.install-app-success p { margin: 0; }
+body.pos-operational .topbar-actions { display: flex; align-items: center; gap: 20px; margin-left: auto; flex-shrink: 0; }
+body.pos-operational .install-app-link { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 36px; padding: 6px 10px; color: var(--pos-primary); border-radius: 7px; text-decoration: none; font-size: 14px; font-weight: 550; white-space: nowrap; }
+body.pos-operational .install-app-link:hover { background: var(--green-100); color: var(--pos-hover); }
+body.pos-operational .install-app-link svg { width: 18px; height: 18px; }
+@media (max-width: 900px) {
+  body.pos-operational .topbar-actions .topbar-product { display: none; }
+  body.pos-operational .install-app-link { min-height: 44px; }
+}
+@media (max-width: 600px) {
+  .install-app-card { margin-top: 20px; }
+  .install-app-card > header, .install-app-body { padding: 20px; }
+  .install-app-action { width: 100%; }
+  body.pos-operational .topbar .restaurant-title { min-width: 0; }
+  body.pos-operational .topbar .restaurant-title > div { min-width: 0; }
+  body.pos-operational .topbar .restaurant-title small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}

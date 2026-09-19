@@ -1,0 +1,7 @@
+.device-pair-dialog header { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.device-pair-dialog h2 { margin: 0; }
+.device-pair-dialog { max-height: 92dvh; overflow-y: auto; }
+.device-link { display: flex; gap: 8px; margin-top: 20px; }
+.device-link input { min-width: 0; flex: 1; }
+.device-qr { display: block; width: min(100%, 300px); aspect-ratio: 1; margin: 20px auto; }
+.device-pair-dialog footer { display: flex; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }

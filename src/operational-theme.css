@@ -1,0 +1,342 @@
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("/fonts/inter-latin.woff2") format("woff2");
+}
+
+/* This scope includes dialog portals, but leaves login and the public menu intact. */
+body.pos-operational {
+  --ink: #262626;
+  --muted: #666;
+  --paper: #fff;
+  --paper-2: #f5f5f5;
+  --line: #e5e5e5;
+  --green-900: #25824f;
+  --green-700: #25824f;
+  --green-500: #35a167;
+  --green-100: #daf1e3;
+  --shadow: 0 1px 2px #0000000d;
+  --radius: 12px;
+  --pos-accent: #35a167;
+  --pos-primary: #25824f;
+  --pos-hover: #1e6c41;
+  font-family: "Inter", sans-serif;
+  font-size: 16px;
+  line-height: 1.45;
+  font-weight: 450;
+  color: var(--ink);
+  background: var(--paper-2);
+}
+body.pos-operational * { scrollbar-color: #a7a7a7 #f5f5f5; scrollbar-width: thin; }
+body.pos-operational ::selection { background: #daf1e3; color: #173e27; }
+body.pos-operational :focus-visible { outline: 2px solid var(--pos-primary); outline-offset: 3px; }
+body.pos-operational :is(input, textarea) { caret-color: var(--pos-primary); }
+body.pos-operational :is(input, textarea)::placeholder { color: #707070; opacity: 1; }
+body.pos-operational :is(h1, h2, h3) { letter-spacing: 0; font-weight: 550; }
+body.pos-operational :is(button, input, textarea, select) { font-family: inherit; }
+body.pos-operational :is(label, .settings-card label, .settings-drawer label, .new-order-section label:not(.new-order-comment-toggle)) { font-size: 1rem; font-weight: 450; color: var(--ink); }
+body.pos-operational :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]), textarea, select) {
+  min-width: 0;
+  border-radius: 7px;
+  border-color: var(--line);
+  background-color: #fff;
+  font-size: 1rem;
+  padding: 7px var(--pos-input-padding-right, 12px) 7px var(--pos-input-padding-left, 12px);
+}
+/* Reserve adornment space without competing with the universal input selector. */
+body.pos-operational :is(.settings-money-input, .money-input, .promotion-number-input) > input { --pos-input-padding-left: 38px; }
+body.pos-operational .settings-input-icon > input { --pos-input-padding-left: 35px; }
+body.pos-operational .settings-unit-input > input { --pos-input-padding-right: 42px; }
+body.pos-operational .new-order-select > select { --pos-input-padding-right: 38px; }
+body.pos-operational .search-field > input { --pos-input-padding-left: 39px; }
+body.pos-operational .orders-search > input { --pos-input-padding-left: 38px; }
+body.pos-operational .availability-search-field > input { --pos-input-padding-left: 41px; }
+body.pos-operational :is(.customization-search-field, .product-group-search) > input { --pos-input-padding-left: 0px; --pos-input-padding-right: 0px; }
+body.pos-operational :is(.settings-money-input > span, .money-input > span, .promotion-number-input > b, .settings-unit-input > span, .settings-input-icon > svg, .search-field > svg) { pointer-events: none; }
+body.pos-operational :is(label > small, .field-hint) { font-size: .875rem; font-weight: 400; color: var(--muted); }
+body.pos-operational :is(input[type="radio"], input[type="checkbox"]) { accent-color: var(--pos-primary); }
+body.pos-operational :is(.button, .dashboard-button, .availability-toolbar-button, .availability-filters button) {
+  min-height: 36px;
+  padding: 6px 11px;
+  border-radius: 7px;
+  font-size: 1rem;
+  font-weight: 550;
+  box-shadow: 0 1px 2px #00000012;
+  transition: background-color 120ms ease-out, border-color 120ms ease-out;
+}
+body.pos-operational :is(.button-primary, .menu-primary, .order-list-actions .order-list-create, .digital-command-board .command-card-action.button-primary, .dashboard-button.primary) {
+  color: #fff;
+  background: var(--pos-primary);
+  border-color: var(--pos-primary);
+}
+body.pos-operational :is(.button-primary, .menu-primary, .order-list-actions .order-list-create, .digital-command-board .command-card-action.button-primary, .dashboard-button.primary):hover:not(:disabled) {
+  background: var(--pos-hover);
+  border-color: var(--pos-hover);
+  transform: none;
+}
+body.pos-operational :is(.button-secondary, .icon-button, .button-ghost) { color: var(--ink); border-color: var(--line); background: #fff; }
+body.pos-operational :is(.icon-button, .menu-icon-button) { width: 36px; height: 36px; border-radius: 7px; }
+body.pos-operational :is(.button, .icon-button):disabled { opacity: .48; cursor: not-allowed; }
+
+/* One shell and one heading rhythm across all operational workspaces. */
+body.pos-operational .app-shell { grid-template-columns: 240px minmax(0, 1fr); background: var(--paper-2); }
+body.pos-operational .sidebar { padding: 16px 12px; border-color: var(--line); }
+body.pos-operational .brand-block { border: 0; padding: 0 8px 10px; }
+body.pos-operational .brand-mark { background: #f0f0f0; color: #666; border-radius: 7px; width: 32px; height: 32px; }
+body.pos-operational .brand-block strong { font-size: .875rem; font-weight: 600; }
+body.pos-operational .brand-block span { font-size: .75rem; color: #666; letter-spacing: 0; text-transform: none; }
+body.pos-operational .sidebar-branch-picker { margin: 4px 2px 12px; }
+body.pos-operational .sidebar-branch-picker > div { min-height: 36px; background: #fff; border: 0; padding: 0 6px; }
+body.pos-operational .sidebar-branch-picker select { font-weight: 550; padding: 4px; }
+body.pos-operational .sidebar nav { gap: 0; }
+body.pos-operational .sidebar nav a { min-height: 40px; padding: 8px 12px; border-radius: 7px; font-size: 1rem; font-weight: 550; }
+body.pos-operational .sidebar nav a.active { color: var(--pos-primary); background: transparent; }
+body.pos-operational .sidebar nav a:hover { background: #f5f5f5; }
+body.pos-operational .sidebar-footer { border: 0; }
+body.pos-operational .settings-launch-button { min-height: 36px; font-size: 1rem; border-radius: 7px; font-weight: 550; }
+body.pos-operational .workspace { background: var(--paper-2); }
+body.pos-operational .topbar { height: 48px; padding-inline: 24px; border: 0; background: #fff; backdrop-filter: none; }
+body.pos-operational .topbar-product { font-size: .875rem; font-weight: 450; }
+body.pos-operational .main-content { padding: 22px 24px 48px; }
+body.pos-operational .page-stack { gap: 20px; animation: none; }
+body.pos-operational :is(.orders-heading, .dashboard-page-heading h1, .availability-workspace-header h1, .cash-workspace-header h1, .menu-page-header h1) {
+  margin: 0;
+  font-size: 1.25rem;
+  line-height: 1.4;
+  letter-spacing: 0;
+  font-weight: 500;
+}
+body.pos-operational :is(.menu-page, .cash-workspace, .availability-workspace) { width: 100%; max-width: none; }
+body.pos-operational :is(.menu-catalog-board, .customizations-workspace, .promotion-workspace, .cash-tab-panel, .availability-card) { width: 100%; max-width: 1180px; margin-inline: auto; }
+body.pos-operational .menu-page-header { align-items: center; }
+body.pos-operational .menu-page-actions { max-width: 1180px; margin: 20px auto 12px; justify-content: flex-end; }
+body.pos-operational .menu-product-main strong { font-size: 1rem; font-weight: 500; }
+body.pos-operational .menu-product-main small { font-size: .875rem; color: var(--muted); }
+body.pos-operational .menu-catalog-footer { font-size: .875rem; font-weight: 450; }
+body.pos-operational .menu-page-header > div > p { display: none; }
+body.pos-operational :is(.menu-tabs, .orders-page > .orders-tabs, .cash-tabs) { overflow-x: auto; overflow-y: hidden; gap: 8px; scrollbar-width: none; border-color: var(--line); margin: 0 0 4px; }
+body.pos-operational :is(.menu-tabs button, .orders-page > .orders-tabs button, .cash-tabs button) { min-height: 44px; padding: 0 12px; color: var(--ink); font-size: 1rem; font-weight: 550; }
+body.pos-operational :is(.menu-tabs button, .orders-tabs button, .cash-tabs button)::after { height: 3px; left: 0; right: 0; bottom: 0; background: #d7d7d7; }
+body.pos-operational :is(.menu-tabs button.active, .orders-tabs button.active, .cash-tabs button.active)::after { background: var(--pos-accent); }
+body.pos-operational :is(.menu-catalog-board, .panel, .availability-card, .settings-card) { border-color: var(--line); border-radius: 12px; box-shadow: var(--shadow); background: #fff; }
+body.pos-operational :is(.menu-category-section > header, .customization-table th, .promotion-table th, .availability-table th) { background: #f5f5f5; color: #555; font-size: 1rem; font-weight: 500; }
+body.pos-operational :is(.menu-product-copy strong, .customization-table-row, .promotion-table-row, .availability-product-name strong) { font-size: 1rem; font-weight: 450; }
+body.pos-operational :is(.menu-product-copy small, .menu-drag-label span, .availability-product-name small, .customization-summary) { font-size: .875rem; color: var(--muted); }
+body.pos-operational :is(.menu-context-popover, .settings-action-popover, .order-actions-menu) { border-radius: 7px; box-shadow: 0 3px 8px #00000029; }
+body.pos-operational :is(.menu-context-popover button, .settings-action-popover button, .order-actions-menu button) { min-height: 36px; font-size: 1rem; font-weight: 450; }
+body.pos-operational :is(.menu-context-title, .settings-action-popover > strong, .order-menu-label) { font-size: .875rem; font-weight: 550; }
+body.pos-operational :is(.orders-pagination, .availability-pagination, .settings-pagination, .command-board-pagination) { min-height: 48px; background: #fafafa; color: #666; border-color: var(--line); font-size: .875rem; font-weight: 450; }
+body.pos-operational :is(.orders-pagination .icon-button, .availability-pagination button, .settings-pagination .icon-button, .command-board-pagination .icon-button) { width: 36px; height: 36px; border-radius: 7px; }
+
+/* Editors use the same legible controls as the lists, including portal content. */
+body.pos-operational :is(.product-drawer, .customization-drawer, .promotion-drawer, .new-order-drawer, .cash-cut-drawer) { width: min(1200px, 100%); box-shadow: none; }
+body.pos-operational :is(.product-drawer-header h2, .customization-drawer-header h2, .promotion-drawer-header h2, .new-order-header h2, .cash-drawer-header h2, .settings-drawer h2, .menu-modal h2) { font-size: 1.25rem; font-weight: 550; }
+body.pos-operational :is(.product-form-section, .customization-form-section, .promotion-form-section, .new-order-section) { padding: 24px; gap: 16px; border-color: var(--line); }
+body.pos-operational :is(.product-form-section h3, .customization-section-heading h3, .promotion-form-section h3, .new-order-section-heading h3, .selection-rules-heading h3) { font-size: 1rem; font-weight: 500; }
+body.pos-operational :is(.product-live-preview, .customization-live-preview, .promotion-live-preview, .new-order-preview, .cash-blind-summary) { padding: 32px; background: #f5f5f5; }
+body.pos-operational :is(.preview-heading, .customization-preview-title, .new-order-preview-heading, .promotion-preview-title) { font-size: 1.25rem; font-weight: 550; }
+body.pos-operational .preview-heading svg { display: none; }
+body.pos-operational .preview-product-card { width: min(430px, 100%); }
+body.pos-operational .preview-product-image { width: 160px; height: 160px; border-radius: 10px; }
+body.pos-operational .preview-product-card > h3 { font-size: 1.125rem; font-weight: 550; }
+body.pos-operational .preview-product-card > p { font-size: 1rem; color: var(--muted); }
+body.pos-operational :is(.modifier-selector-heading strong, .modifier-selector-preview .modifier-selector-heading strong, .modifier-option-copy strong, .modifier-selector-preview .modifier-option-copy strong) { font-size: 1rem; font-weight: 500; }
+body.pos-operational :is(.modifier-selector-heading small, .modifier-option-copy small, .modifier-selector-preview .modifier-option-copy small) { color: var(--muted); font-size: .875rem; }
+body.pos-operational .modifier-selector-heading > i { padding: 3px 9px; font-size: .875rem; font-weight: 550; }
+body.pos-operational .modifier-option-row > input { width: 24px; height: 24px; flex-basis: 24px; }
+body.pos-operational .modifier-selector-preview .modifier-option-copy { flex: 1; display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+body.pos-operational .modifier-selector-preview .modifier-option-copy small { white-space: nowrap; }
+body.pos-operational .modifier-selector-preview .modifier-option-row { min-height: 48px; padding: 10px 6px; }
+body.pos-operational :is(.variant-price-head, .product-selected-heading strong, .product-selected-remove, .menu-text-button, .more-options-toggle, .product-group-results button strong, .customization-table td, .customization-row-name) { font-size: 1rem; font-weight: 450; }
+body.pos-operational :is(.product-selected-copy small, .product-group-results button small) { font-size: .875rem; color: var(--muted); }
+body.pos-operational :is(.product-selected-heading i, .product-group-results button i, .customization-label) { font-size: .8125rem; font-weight: 500; }
+body.pos-operational .product-selected-customization { grid-template-columns: 20px minmax(0, 1fr) auto; border-radius: 7px; background: #fafafa; }
+body.pos-operational .product-selected-icon { width: 20px; height: 30px; background: none; color: #666; }
+body.pos-operational .product-selected-remove { min-height: 36px; }
+body.pos-operational .menu-text-button { color: var(--pos-primary); }
+body.pos-operational .product-group-popover { border-radius: 7px; box-shadow: 0 3px 8px #00000029; }
+body.pos-operational :is(.product-customization-card strong, .product-customization-card small, .product-price-heading, .selection-limit-input b, .customization-repeat-switch, .customization-repeat-label) { font-size: .875rem; }
+body.pos-operational :is(.product-drawer-footer, .customization-drawer-footer, .promotion-drawer-footer, .new-order-footer, .cash-drawer-footer) { min-height: 70px; border-color: var(--line); }
+body.pos-operational :is(.product-drawer-footer > span, .new-order-footer > span) { font-size: .875rem; }
+body.pos-operational :is(.customization-form-section label > small, .customization-section-heading p, .service-channel-groups legend, .new-order-section-heading p, .new-order-preview-total) { font-size: .875rem; color: var(--muted); }
+body.pos-operational :is(.product-drawer-backdrop, .customization-drawer-backdrop, .promotion-drawer-backdrop, .menu-modal-backdrop) { backdrop-filter: none; }
+
+body.pos-operational .order-list-actions :is(.orders-search, .orders-search input, .icon-button, .order-list-create) { min-height: 36px; height: 36px; }
+/* The floor scrolls locally; zone labels and actions wrap instead of squeezing each other. */
+body.pos-operational :is(.tables-workspace, .tables-zone-panel, .tables-summary-strip, .tables-operational-floor) { min-width: 0; max-width: 100%; }
+body.pos-operational .tables-workspace-toolbar { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 12px; }
+body.pos-operational .table-area-tabs { flex: 1 1 320px; flex-wrap: wrap; overflow: visible; max-width: 100%; padding: 4px; }
+body.pos-operational .table-area-tabs button { min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+body.pos-operational .tables-workspace-actions { flex: 0 1 auto; min-width: 0; max-width: 100%; margin-left: auto; }
+body.pos-operational .tables-workspace-actions .button { min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+body.pos-operational .order-list-workspace table { font-size: 1rem; }
+body.pos-operational .order-list-workspace .orders-desktop-table :is(th, td) { padding: 12px 16px; font-size: 1rem; }
+body.pos-operational .order-row-open { padding: 0; border: 0; background: none; color: inherit; font: inherit; font-weight: 550; text-align: left; }
+body.pos-operational .order-list-workspace .orders-empty { min-height: 180px; }
+body.pos-operational .order-payment-badge { font-size: .875rem; }
+body.pos-operational :is(.order-payment-badge.payment-evidence_received, .order-payment-badge.payment-under_review) { background: #fff2b4; color: #82570d; }
+body.pos-operational .order-list-workspace .order-channel { font-size: .875rem; }
+body.pos-operational .digital-command-board { --command-line: var(--line); --command-muted: var(--muted); }
+body.pos-operational .digital-command-board .command-board-toolbar .button { min-height: 36px; font-size: 1rem; }
+body.pos-operational .digital-command-board .command-card { gap: 6px; border-radius: 12px; }
+body.pos-operational .digital-command-board .command-card-reference > span { font-size: .8125rem; }
+body.pos-operational .digital-command-board .command-card-action { min-height: 36px; font-size: 1rem; }
+body.pos-operational .digital-command-board .command-item-group { font-size: 1rem; }
+body.pos-operational .order-detail-modal .order-detail-collect { background: var(--pos-primary); border-color: var(--pos-primary); }
+body.pos-operational .order-detail-modal .order-menu-trigger { width: 36px; min-height: 36px; }
+body.pos-operational :is(.order-command-expand small, .order-detail-modal .order-detail-summary small) { color: #666; }
+body.pos-operational :is(.cash-intro-card, .cash-empty-state, .cash-empty, .cash-cut-fields, .cash-table-panel, .cash-cut-print-sheet) { background: #fff; box-shadow: var(--shadow); border-color: var(--line); }
+body.pos-operational :is(.cash-intro-card, .cash-empty-state) { min-height: 280px; padding: 36px; }
+body.pos-operational .cash-first-cut { min-height: 360px; padding: 36px; }
+body.pos-operational .cash-empty-icon { width: 64px; height: 64px; color: #666; background: #f5f5f5; border-radius: 12px; }
+body.pos-operational .cash-tabs button[aria-selected="true"]::after { background: var(--pos-accent); }
+body.pos-operational :is(.cash-history-table, .cash-movements-table) { min-width: 0; width: 100%; table-layout: fixed; }
+body.pos-operational :is(.cash-history-table, .cash-movements-table) :is(th, td) { font-size: 1rem; white-space: normal; overflow-wrap: anywhere; }
+body.pos-operational :is(.cash-history-table, .cash-movements-table) th { font-weight: 500; text-transform: none; letter-spacing: 0; background: #f5f5f5; }
+body.pos-operational :is(.cash-history-table, .cash-movements-table) th:first-child { background: #f5f5f5; }
+body.pos-operational .cash-result { font-size: .8125rem; font-weight: 500; white-space: normal; }
+body.pos-operational .cash-pagination span { font-size: .875rem; }
+body.pos-operational .cash-table-scroll-hint { display: none; }
+body.pos-operational :is(.cash-tabs, .cash-workspace-header) { border-color: var(--line); }
+body.pos-operational :is(.cash-input-action, .cash-money-field) { background: #fff; border-color: var(--line); border-radius: 7px; }
+body.pos-operational :is(.cash-cut-fields label, .cash-blind-summary, .cash-denomination-row, .cash-cut-print-sheet) { font-size: 1rem; }
+body.pos-operational .availability-workspace { --paper: #fff; --line: #e5e5e5; --muted: #666; --green-500: #35a167; --green-700: #25824f; }
+body.pos-operational .availability-card-toolbar { min-height: 60px; }
+body.pos-operational .availability-table th { height: 46px; }
+body.pos-operational .availability-table td { height: 62px; }
+body.pos-operational .availability-status { font-size: .8125rem; }
+body.pos-operational .availability-toggle.is-active { background: var(--pos-accent); }
+body.pos-operational .availability-filters button.is-active { color: var(--pos-primary); border-color: var(--pos-accent); background: #fff; box-shadow: none; }
+body.pos-operational .dashboard-page { --dashboard-green: #25824f; --dashboard-line: #e5e5e5; --dashboard-muted: #666; }
+body.pos-operational .dashboard-page-heading { padding-bottom: 12px; margin-bottom: 24px; }
+body.pos-operational .dashboard-card { border-radius: 12px; box-shadow: var(--shadow); }
+body.pos-operational .dashboard-chart-empty { border: 2px dashed var(--line); border-radius: 7px; min-height: 200px; }
+body.pos-operational .dashboard-chart-empty > span { font-size: 1rem; }
+body.pos-operational .dashboard-average { border: 1px solid var(--line); border-radius: 7px; }
+body.pos-operational :is(.dashboard-chart-axis, .dashboard-chart-labels, .dashboard-bar-column > small, .dashboard-chart-tooltip) { font-size: .8125rem; }
+body.pos-operational .dashboard-ranking li { font-size: 1rem; }
+body.pos-operational .dashboard-date-popover { border: 1px solid var(--line); border-radius: 7px; box-shadow: 0 3px 8px #00000029; }
+body.pos-operational .chart-series { stroke: var(--pos-accent); }
+body.pos-operational .dashboard-card-link { font-size: .875rem; }
+body.pos-operational .promotion-table-container { display: block; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+body.pos-operational .promotion-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+body.pos-operational .promotion-table :is(th, td) { text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+body.pos-operational .promotion-table th:last-child { width: 62px; }
+body.pos-operational .promotion-table th:nth-child(3) { width: 130px; }
+body.pos-operational .promotion-table th { background: #f5f5f5; font-weight: 500; }
+body.pos-operational .promotion-table th:first-child { border-radius: 12px 0 0; }
+body.pos-operational .promotion-table th:last-child { border-radius: 0 12px 0 0; }
+body.pos-operational .promotion-table .promotion-card-main strong { font-size: 1rem; font-weight: 450; white-space: normal; }
+body.pos-operational .promotion-table .promotion-card-main small { font-size: .875rem; color: var(--muted); }
+body.pos-operational .promotion-discount-summary { display: block; font-size: .875rem; }
+body.pos-operational .promotion-card-channels { justify-content: flex-start; max-width: none; margin-top: 5px; }
+body.pos-operational .promotion-card-channels span { font-size: .75rem; font-weight: 400; border: 0; padding: 0; background: transparent; }
+body.pos-operational .promotion-card-channels span + span::before { content: "/ "; }
+body.pos-operational .promotion-status { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eee; color: #555; font-size: .875rem; }
+body.pos-operational .promotion-status.active { background: #daf1e3; color: #23643f; }
+body.pos-operational .promotion-table tr:last-child td { border-bottom: 0; }
+
+/* Settings share the same field scale, with a narrow navigation and roomy forms. */
+body.pos-operational .settings-workspace { top: 40px; height: calc(100dvh - 40px); background: #f5f5f5; grid-template-rows: 64px minmax(0, 1fr); border-radius: 12px 12px 0 0; }
+body.pos-operational .settings-workspace-header h1 { font-size: 1.25rem; font-weight: 550; }
+body.pos-operational .settings-workspace-header > div > svg { display: none; }
+body.pos-operational .settings-workspace-layout { width: min(1020px, calc(100% - 48px)); grid-template-columns: 240px minmax(0, 1fr); gap: 24px; padding-top: 28px; }
+body.pos-operational .settings-navigation { padding: 8px; border-radius: 8px; max-height: calc(100dvh - 160px); box-shadow: none; }
+body.pos-operational .settings-navigation button { min-height: 40px; font-size: 1rem; font-weight: 450; }
+body.pos-operational .settings-navigation button.is-active { background: #eaf6ef; color: var(--pos-primary); font-weight: 550; }
+body.pos-operational .settings-navigation-group { font-size: .875rem; color: var(--muted); }
+body.pos-operational .settings-workspace-content { height: calc(100dvh - 160px); padding-right: 4px; }
+body.pos-operational .settings-section-header { min-height: 36px; }
+body.pos-operational .settings-section-header h2 { font-size: 1.25rem; font-weight: 500; }
+body.pos-operational :is(.settings-card-header h3, .settings-card-content h3) { font-size: 1rem; font-weight: 550; }
+body.pos-operational :is(.settings-card p, .settings-section-header p, .settings-feedback, .settings-drawer p, .settings-qz-status p, .settings-data-table small, .settings-inline-empty, .settings-muted) { color: var(--muted); font-size: .875rem; }
+body.pos-operational :is(.settings-feedback-error, .settings-feedback-error p) { color: #963f39; }
+body.pos-operational .settings-form-actions { background: #fafafa; }
+body.pos-operational :is(.settings-data-table, .settings-list-heading, .settings-switch-label strong, .settings-role-list legend, .settings-branch-access legend, .settings-method-group legend) { font-size: 1rem; }
+body.pos-operational .settings-data-table { min-width: 0; table-layout: fixed; }
+body.pos-operational .settings-data-table :is(th, td) { overflow-wrap: anywhere; white-space: normal; }
+body.pos-operational :is(.settings-status-chip, .settings-you-chip, .settings-week-row > strong) { font-size: .8125rem; }
+body.pos-operational .settings-action-popover { max-width: calc(100vw - 40px); }
+
+@media (min-width: 901px) {
+  body.pos-operational .sidebar { width: auto; }
+  body.pos-operational .brand-block > div:nth-child(2) { display: grid; }
+  body.pos-operational .sidebar nav a { justify-content: flex-start; }
+  body.pos-operational .sidebar nav a span { display: inline; }
+  body.pos-operational .sidebar-footer { display: block; }
+}
+@media (max-width: 900px) {
+  body.pos-operational .app-shell { display: block; }
+  body.pos-operational .sidebar { width: min(280px, calc(100vw - 48px)); }
+  body.pos-operational .topbar { height: 56px; padding-inline: 16px; }
+  body.pos-operational .main-content { padding: 20px 16px 40px; }
+  body.pos-operational .settings-workspace { inset: 0; height: 100dvh; border-radius: 0; grid-template-rows: 64px auto minmax(0, 1fr); }
+  body.pos-operational .settings-workspace-layout { width: 100%; display: block; padding: 20px 16px 36px; overflow-y: auto; }
+  body.pos-operational .settings-navigation { display: none; }
+  body.pos-operational .settings-mobile-navigation { display: grid; grid-template-columns: auto minmax(0, 1fr); padding: 12px 16px; align-items: center; gap: 12px; border-bottom: 1px solid var(--line); background: #fff; }
+  body.pos-operational .settings-mobile-navigation select { width: 100%; }
+  body.pos-operational .settings-workspace-content { height: auto; padding: 0; overflow: visible; }
+  body.pos-operational :is(.cash-history-table, .cash-movements-table) { display: block; }
+  body.pos-operational :is(.cash-history-table, .cash-movements-table) thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  body.pos-operational :is(.cash-history-table, .cash-movements-table) tbody { display: block; }
+  body.pos-operational :is(.cash-history-table, .cash-movements-table) tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 12px; gap: 8px 16px; border-bottom: 1px solid var(--line); }
+  body.pos-operational :is(.cash-history-table, .cash-movements-table) td { position: static; padding: 4px; border: 0; text-align: left; }
+  body.pos-operational :is(.cash-history-table, .cash-movements-table) td::before { content: attr(data-label); display: block; color: var(--muted); font-size: .8125rem; font-weight: 450; margin-bottom: 3px; }
+  body.pos-operational .cash-history-table td:first-child button { padding: 0; }
+  body.pos-operational :is(.product-live-preview, .customization-live-preview, .promotion-live-preview, .new-order-preview, .cash-blind-summary) { padding: 24px; }
+}
+@media (max-width: 600px) {
+  body.pos-operational .menu-page-header { align-items: flex-start; text-align: left; }
+  body.pos-operational .restaurant-title { display: flex; min-width: 0; flex: 1; }
+  body.pos-operational .restaurant-title > div { min-width: 0; }
+  body.pos-operational .restaurant-title strong { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: .875rem; }
+  body.pos-operational .menu-page-actions { margin-top: 16px; }
+  body.pos-operational .orders-page > .orders-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  body.pos-operational .orders-page > .orders-tabs button { white-space: normal; line-height: 1.3; padding: 8px 4px; }
+  body.pos-operational .promotion-table thead { display: none; }
+  body.pos-operational .promotion-table tbody { display: grid; }
+  body.pos-operational .promotion-table tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; padding: 12px; border-bottom: 1px solid var(--line); }
+  body.pos-operational .promotion-table td { display: block; border: 0; padding: 5px; grid-column: 1; }
+  body.pos-operational .promotion-table td:last-child { grid-column: 2; grid-row: 1 / span 3; }
+  body.pos-operational :is(.menu-tabs, .orders-page > .orders-tabs, .cash-tabs) { gap: 4px; }
+  body.pos-operational :is(.menu-tabs button, .orders-page > .orders-tabs button, .cash-tabs button) { padding-inline: 8px; font-size: .875rem; }
+  body.pos-operational :is(.product-form-section, .customization-form-section, .promotion-form-section, .new-order-section) { padding: 20px 16px; }
+  body.pos-operational .settings-data-table { display: block; }
+  body.pos-operational .settings-data-table thead { display: none; }
+  body.pos-operational .settings-data-table tbody { display: grid; }
+  body.pos-operational .settings-data-table tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; padding: 12px; border-bottom: 1px solid var(--line); }
+  body.pos-operational .settings-data-table td { display: block; border: 0; padding: 4px; grid-column: 1; }
+  body.pos-operational .settings-data-table td:last-child { grid-column: 2; grid-row: 1 / span 4; }
+  body.pos-operational .settings-data-table td[data-label]::before { content: attr(data-label) ": "; font-weight: 500; }
+  body.pos-operational .settings-form-grid.three-columns { grid-template-columns: 1fr; }
+  body.pos-operational .settings-card-toolbar { flex-wrap: wrap; }
+  body.pos-operational .availability-table th:nth-child(2) { width: 100px; }
+  body.pos-operational .availability-table td { padding-inline: 10px; }
+}
+@media (pointer: coarse), (max-width: 900px) {
+  body.pos-operational .availability-table th:last-child { width: 72px; }
+  body.pos-operational :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]), select) { min-height: 44px; }
+  body.pos-operational .dashboard-help > button { width: 44px; height: 44px; }
+  body.pos-operational :is(.button, .dashboard-button, .availability-toolbar-button, .availability-filters button, .menu-icon-button, .icon-button, .menu-context-popover button, .settings-action-popover button, .order-actions-menu button, .order-list-actions .order-list-create, .digital-command-board .command-card-action) { min-height: 44px; }
+  body.pos-operational :is(.icon-button, .menu-icon-button, .orders-pagination .icon-button, .availability-pagination button, .settings-pagination .icon-button, .command-board-pagination .icon-button) { width: 44px; height: 44px; }
+  body.pos-operational :is(.order-list-actions .orders-search, .order-list-actions .orders-search input) { height: 44px; }
+  body.pos-operational .order-list-actions :is(.orders-search, .orders-search input, .icon-button, .order-list-create) { min-height: 44px; height: 44px; }
+  body.pos-operational .digital-command-board .command-board-toolbar .button { min-height: 44px; }
+  body.pos-operational .order-detail-modal .order-menu-trigger { width: 44px; min-height: 44px; }
+  body.pos-operational .order-detail-modal > header .icon-button { width: 44px; height: 44px; min-height: 44px; }
+  /* Keep compact switch tracks inside full-size touch buttons. */
+  body.pos-operational :is(.availability-toggle, .availability-toggle.is-active) { width: 52px; height: 44px; min-height: 44px; background: transparent; box-shadow: none; }
+  body.pos-operational .availability-toggle::before { content: ""; position: absolute; inset: 7px 0; border-radius: 999px; background: #dedfdd; }
+  body.pos-operational .availability-toggle.is-active::before { background: var(--pos-accent); }
+  body.pos-operational .availability-toggle > span { top: 10px; left: 3px; width: 24px; height: 24px; }
+  body.pos-operational .availability-toggle.is-active > span { transform: translateX(22px); }
+  body.pos-operational :is(.settings-switch, .settings-switch.is-on) { position: relative; width: 44px; height: 44px; min-height: 44px; flex-basis: 44px; padding: 0; border: 0; background: transparent; }
+  body.pos-operational .settings-switch::before { content: ""; position: absolute; top: 11px; left: 3px; width: 37px; height: 22px; border-radius: 999px; background: #dedfdd; }
+  body.pos-operational .settings-switch.is-on::before { background: var(--pos-accent); }
+  body.pos-operational .settings-switch span { position: absolute; top: 14px; left: 6px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  body.pos-operational :is(.button, .settings-section-stack, .product-drawer, .customization-drawer, .promotion-drawer) { animation: none; transition: none; }
+}

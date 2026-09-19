@@ -1,14 +1,12 @@
 import {
   AlertTriangle,
-  Banknote,
   CalendarDays,
   Check,
   ChevronRight,
-  CircleDollarSign,
   Clock3,
   FileSpreadsheet,
+  ImageIcon,
   MapPin,
-  PackagePlus,
   Plus,
   RefreshCcw,
   Save,
@@ -22,11 +20,13 @@ import {
   Warehouse,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { api } from "../lib/api";
+import { api, apiBlob } from "../lib/api";
 import { useBranchRealtime, usePolling } from "../lib/hooks";
 import { useTenant } from "../lib/tenant";
-import type { Catalog, InventoryItem, Order, Reservation, RestaurantTable } from "../types";
+import type { Order, Reservation, RestaurantTable } from "../types";
 import { EmptyState, ErrorState, LoadingState, MetricCard, Modal, Money, PageHeader, StatusPill, Toast } from "../components/ui";
+import { AvailabilityWorkspace } from "../components/AvailabilityWorkspace";
+import { CashWorkspace } from "../components/CashWorkspace";
 
 type ToastState = { message: string; tone: "success" | "error" } | null;
 type Courier = { id: number; name: string; phone: string; status: string; active: boolean };
@@ -148,13 +148,12 @@ type CatalogImportResult = {
     name: string;
     category: string;
     price: number;
-    stock_quantity?: number | null;
   }[];
   created?: number;
   updated?: number;
 };
 
-function CatalogImportModal({ branchId, onClose, onImported }: { branchId: number; onClose: () => void; onImported: () => Promise<void> }) {
+export function CatalogImportModal({ branchId, onClose, onImported }: { branchId: number; onClose: () => void; onImported: () => Promise<void> }) {
   const [file, setFile] = useState<File | null>(null);
   const [result, setResult] = useState<CatalogImportResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -182,8 +181,8 @@ function CatalogImportModal({ branchId, onClose, onImported }: { branchId: numbe
 
   function downloadTemplate() {
     const csv = [
-      "sku,name,category,price,description,available,preparation_station,stock_quantity,stock_unit,minimum_stock,recipe_quantity",
-      "PIZ-001,Pizza Pepperoni,Pizzas,32.00,Pizza familiar,true,kitchen,20,unit,3,1",
+      "sku,name,category,price,description,available,preparation_station",
+      "PIZ-001,Pizza Pepperoni,Pizzas,32.00,Pizza familiar,true,kitchen",
     ].join("\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
     const anchor = document.createElement("a");
@@ -214,7 +213,7 @@ function CatalogImportModal({ branchId, onClose, onImported }: { branchId: numbe
           <strong>Corrige estas filas antes de importar</strong>
           {result.errors.map((item) => <span key={`${item.row}-${item.sku}`}>Fila {item.row}{item.sku ? ` · ${item.sku}` : ""}: {item.error}</span>)}
         </div>}
-        {result.preview.length > 0 && <div className="data-table-wrap"><table className="data-table"><thead><tr><th>SKU</th><th>Producto</th><th>Categoría</th><th>Precio</th><th>Stock</th></tr></thead><tbody>{result.preview.map((item) => <tr key={item.sku}><td>{item.sku}</td><td><strong>{item.name}</strong></td><td>{item.category}</td><td><Money value={item.price} /></td><td>{item.stock_quantity ?? "Sin control"}</td></tr>)}</tbody></table></div>}
+        {result.preview.length > 0 && <div className="data-table-wrap"><table className="data-table"><thead><tr><th>SKU</th><th>Producto</th><th>Categoría</th><th>Precio</th></tr></thead><tbody>{result.preview.map((item) => <tr key={item.sku}><td>{item.sku}</td><td><strong>{item.name}</strong></td><td>{item.category}</td><td><Money value={item.price} /></td></tr>)}</tbody></table></div>}
         {!result.dry_run && <div className="success-callout"><Check /> Se crearon {result.created || 0} productos y se actualizaron {result.updated || 0}.</div>}
       </div>}
       <div className="modal-actions">
@@ -226,76 +225,11 @@ function CatalogImportModal({ branchId, onClose, onImported }: { branchId: numbe
 }
 
 export function InventoryPage() {
-  const { branch } = useTenant();
-  const [adjusting, setAdjusting] = useState<InventoryItem | null>(null);
-  const [delta, setDelta] = useState(0);
-  const [movementType, setMovementType] = useState("adjustment");
-  const [note, setNote] = useState("");
-  const [creating, setCreating] = useState(false);
-  const [importing, setImporting] = useState(false);
-  const [form, setForm] = useState({ sku: "", name: "", unit: "unit", quantity: 0, minimum_stock: 0, unit_cost: 0 });
-  const [toast, setToast] = useState<ToastState>(null);
-  const resource = usePolling(async () => branch ? api<InventoryItem[]>(`/inventory?branch_id=${branch.id}`) : Promise.reject(new Error("Selecciona una sucursal")), [branch?.id], 20000);
-  useBranchRealtime(branch?.id, resource.refresh);
-
-  async function adjust() {
-    if (!adjusting || !delta) return;
-    try {
-      await api(`/inventory/${adjusting.id}/adjust`, { method: "POST", body: JSON.stringify({ movement_type: movementType, quantity_delta: delta, note: note || null, expected_version: adjusting.version }) });
-      setAdjusting(null); setDelta(0); setNote(""); await resource.refresh(); setToast({ message: "Movimiento de stock registrado.", tone: "success" });
-    } catch (caught) { setToast({ message: caught instanceof Error ? caught.message : "No se pudo ajustar", tone: "error" }); }
-  }
-  async function createItem() {
-    if (!branch || !form.name || !form.sku) return;
-    try {
-      await api("/inventory", { method: "POST", body: JSON.stringify({ ...form, branch_id: branch.id }) });
-      setCreating(false); setForm({ sku: "", name: "", unit: "unit", quantity: 0, minimum_stock: 0, unit_cost: 0 }); await resource.refresh();
-    } catch (caught) { setToast({ message: caught instanceof Error ? caught.message : "No se pudo crear", tone: "error" }); }
-  }
-  if (resource.loading && !resource.data) return <LoadingState />;
-  if (resource.error && !resource.data) return <ErrorState message={resource.error} />;
-  const items = resource.data || [];
-  const low = items.filter((item) => item.low_stock);
-  return <div className="page-stack inventory-page"><PageHeader eyebrow="Insumos y recetas" title="Inventario" description="Cada confirmación de pedido descuenta insumos según receta." actions={<><button className="button button-secondary" onClick={() => setImporting(true)}><FileSpreadsheet /> Importar carta</button><button className="button button-primary" onClick={() => setCreating(true)}><PackagePlus /> Nuevo insumo</button></>} /><section className="metrics-grid"><MetricCard label="Insumos activos" value={items.length} /><MetricCard label="Stock bajo" value={low.length} tone={low.length ? "orange" : "green"} hint="Igual o menor al mínimo" /><MetricCard label="Valor estimado" value={<Money value={items.reduce((sum, item) => sum + item.quantity * item.unit_cost, 0)} />} /></section>{low.length > 0 && <div className="warning-banner"><AlertTriangle /><div><strong>{low.length} insumo(s) necesitan atención</strong><span>{low.map((item) => item.name).join(", ")}</span></div></div>}<section className="panel data-table-wrap"><table className="data-table"><thead><tr><th>Insumo</th><th>SKU</th><th>Stock actual</th><th>Mínimo</th><th>Costo unitario</th><th>Estado</th><th /></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td><strong>{item.name}</strong><small>{item.unit}</small></td><td>{item.sku}</td><td><strong>{item.quantity} {item.unit}</strong></td><td>{item.minimum_stock} {item.unit}</td><td><Money value={item.unit_cost} /></td><td><StatusPill value={item.low_stock ? "low_stock" : "healthy"} /></td><td><button className="button button-ghost" onClick={() => { setAdjusting(item); setDelta(0); }}>Ajustar</button></td></tr>)}</tbody></table></section>{adjusting && <Modal title={`Ajustar ${adjusting.name}`} onClose={() => setAdjusting(null)}><div className="form-stack"><p>Stock actual: <strong>{adjusting.quantity} {adjusting.unit}</strong></p><label>Tipo<select value={movementType} onChange={(event) => setMovementType(event.target.value)}><option value="purchase">Compra / ingreso</option><option value="adjustment">Ajuste</option><option value="waste">Merma</option></select></label><label>Variación<input type="number" step="0.001" value={delta} onChange={(event) => setDelta(Number(event.target.value))} /><small>Usa negativo para salida o merma.</small></label><label>Motivo<textarea value={note} onChange={(event) => setNote(event.target.value)} /></label><button className="button button-primary" onClick={() => void adjust()}><Save /> Registrar movimiento</button></div></Modal>}{creating && <Modal title="Nuevo insumo" onClose={() => setCreating(false)}><div className="form-stack form-grid">{Object.entries(form).map(([key, value]) => <label key={key}>{key.replaceAll("_", " ")}<input type={typeof value === "number" ? "number" : "text"} step="0.001" value={value} onChange={(event) => setForm((current) => ({ ...current, [key]: typeof value === "number" ? Number(event.target.value) : event.target.value }))} /></label>)}<button className="button button-primary button-large" onClick={() => void createItem()}><Plus /> Crear insumo</button></div></Modal>}{importing && branch && <CatalogImportModal branchId={branch.id} onClose={() => setImporting(false)} onImported={async () => { await resource.refresh(); setToast({ message: "Catálogo e inventario importados correctamente.", tone: "success" }); }} />}{toast && <Toast {...toast} onDismiss={() => setToast(null)} />}</div>;
+  return <AvailabilityWorkspace />;
 }
 
-type Register = { id: number; name: string; active: boolean };
-type CashSession = { id: number; register_id: number; status: string; opening_amount: number; expected_amount: number; declared_amount?: number | null; difference?: number | null; opened_at: string };
-
 export function CashPage() {
-  const { branch } = useTenant();
-  const [opening, setOpening] = useState(false);
-  const [registerId, setRegisterId] = useState<number | null>(null);
-  const [openingAmount, setOpeningAmount] = useState(0);
-  const [movementOpen, setMovementOpen] = useState(false);
-  const [movementType, setMovementType] = useState("income");
-  const [movementAmount, setMovementAmount] = useState(0);
-  const [movementNote, setMovementNote] = useState("");
-  const [closing, setClosing] = useState(false);
-  const [declared, setDeclared] = useState(0);
-  const [toast, setToast] = useState<ToastState>(null);
-  const resource = usePolling(async () => {
-    if (!branch) throw new Error("Selecciona una sucursal");
-    const [registers, sessions] = await Promise.all([api<Register[]>(`/cash/registers?branch_id=${branch.id}`), api<CashSession[]>(`/cash/sessions?branch_id=${branch.id}`)]);
-    return { registers, sessions };
-  }, [branch?.id], 12000);
-  const current = resource.data?.sessions.find((session) => session.status === "open") || null;
-
-  async function openSession() {
-    if (!registerId) return;
-    try { await api("/cash/sessions/open", { method: "POST", body: JSON.stringify({ register_id: registerId, opening_amount: openingAmount }) }); setOpening(false); await resource.refresh(); } catch (caught) { setToast({ message: caught instanceof Error ? caught.message : "No se pudo abrir", tone: "error" }); }
-  }
-  async function movement() {
-    if (!current || movementAmount <= 0) return;
-    try { await api(`/cash/sessions/${current.id}/movements`, { method: "POST", body: JSON.stringify({ movement_type: movementType, amount: movementAmount, note: movementNote || null }) }); setMovementOpen(false); setMovementAmount(0); setMovementNote(""); await resource.refresh(); } catch (caught) { setToast({ message: caught instanceof Error ? caught.message : "No se pudo registrar", tone: "error" }); }
-  }
-  async function closeSession() {
-    if (!current) return;
-    try { const result = await api<{ difference: number }>(`/cash/sessions/${current.id}/close`, { method: "POST", body: JSON.stringify({ declared_amount: declared }) }); setClosing(false); await resource.refresh(); setToast({ message: `Caja cerrada. Diferencia: S/ ${result.difference.toFixed(2)}`, tone: result.difference === 0 ? "success" : "error" }); } catch (caught) { setToast({ message: caught instanceof Error ? caught.message : "No se pudo cerrar", tone: "error" }); }
-  }
-  if (resource.loading && !resource.data) return <LoadingState />;
-  if (resource.error && !resource.data) return <ErrorState message={resource.error} />;
-  return <div className="page-stack cash-page"><PageHeader eyebrow="Control de turno" title="Caja" description="Apertura, movimientos y cierre declarado con diferencia visible." actions={!current ? <button className="button button-primary" onClick={() => { setRegisterId(resource.data?.registers[0]?.id || null); setOpening(true); }}><WalletCards /> Abrir caja</button> : <><button className="button button-secondary" onClick={() => setMovementOpen(true)}><Plus /> Movimiento</button><button className="button button-primary" onClick={() => { setDeclared(current.expected_amount); setClosing(true); }}><Banknote /> Cerrar caja</button></>} />{current ? <section className="cash-hero"><div><span className="eyebrow light">Turno abierto</span><h2>{resource.data?.registers.find((item) => item.id === current.register_id)?.name}</h2><p>Desde {new Date(current.opened_at).toLocaleString("es-PE")}</p></div><div><span>Efectivo esperado</span><strong><Money value={current.expected_amount} /></strong><small>Incluye apertura y movimientos en efectivo</small></div></section> : <section className="empty-cash"><CircleDollarSign /><h2>No hay una caja abierta</h2><p>Abre un turno antes de registrar cobros en efectivo.</p></section>}<section className="metrics-grid"><MetricCard label="Saldo inicial" value={<Money value={current?.opening_amount || 0} />} /><MetricCard label="Esperado ahora" value={<Money value={current?.expected_amount || 0} />} tone="green" /><MetricCard label="Turnos anteriores" value={(resource.data?.sessions.length || 0) - (current ? 1 : 0)} /></section><section className="panel data-table-wrap"><table className="data-table"><thead><tr><th>Turno</th><th>Estado</th><th>Apertura</th><th>Esperado</th><th>Declarado</th><th>Diferencia</th></tr></thead><tbody>{resource.data?.sessions.map((session) => <tr key={session.id}><td><strong>#{session.id}</strong><small>{new Date(session.opened_at).toLocaleDateString("es-PE")}</small></td><td><StatusPill value={session.status} /></td><td><Money value={session.opening_amount} /></td><td><Money value={session.expected_amount} /></td><td>{session.declared_amount == null ? "—" : <Money value={session.declared_amount} />}</td><td>{session.difference == null ? "—" : <Money value={session.difference} />}</td></tr>)}</tbody></table></section>{opening && <Modal title="Abrir caja" onClose={() => setOpening(false)}><div className="form-stack"><label>Caja<select value={registerId || ""} onChange={(event) => setRegisterId(Number(event.target.value))}>{resource.data?.registers.map((register) => <option key={register.id} value={register.id}>{register.name}</option>)}</select></label><label>Saldo inicial<input type="number" min="0" step="0.01" value={openingAmount} onChange={(event) => setOpeningAmount(Number(event.target.value))} /></label><button className="button button-primary" onClick={() => void openSession()}>Abrir turno</button></div></Modal>}{movementOpen && <Modal title="Movimiento de caja" onClose={() => setMovementOpen(false)}><div className="form-stack"><label>Tipo<select value={movementType} onChange={(event) => setMovementType(event.target.value)}><option value="income">Ingreso</option><option value="withdrawal">Retiro</option><option value="expense">Gasto</option></select></label><label>Monto<input type="number" min="0.01" value={movementAmount} onChange={(event) => setMovementAmount(Number(event.target.value))} /></label><label>Motivo<textarea value={movementNote} onChange={(event) => setMovementNote(event.target.value)} /></label><button className="button button-primary" onClick={() => void movement()}>Registrar</button></div></Modal>}{closing && current && <Modal title="Cerrar caja" onClose={() => setClosing(false)}><div className="form-stack"><div className="reconciliation"><span>Esperado</span><strong><Money value={current.expected_amount} /></strong></div><label>Efectivo declarado<input type="number" min="0" step="0.01" value={declared} onChange={(event) => setDeclared(Number(event.target.value))} /></label><div className="reconciliation"><span>Diferencia calculada</span><strong><Money value={declared - current.expected_amount} /></strong></div><button className="button button-primary" onClick={() => void closeSession()}>Confirmar cierre</button></div></Modal>}{toast && <Toast {...toast} onDismiss={() => setToast(null)} />}</div>;
+  return <CashWorkspace />;
 }
 
 type DailyReport = { day: string; orders: number; closed_orders: number; gross_sales: number; average_ticket: number; by_channel: Record<string, number>; by_payment_method: Record<string, number>; top_products: { name: string; quantity: number; sales: number }[] };
@@ -325,13 +259,14 @@ export function SettingsPage() {
     delivery_fee: branch?.delivery_fee || 0,
     delivery_enabled: branch?.delivery_enabled ?? true,
     takeaway_enabled: branch?.takeaway_enabled ?? true,
+    agent_context_notes: branch?.agent_context_notes || "",
   });
-  const [categoryName, setCategoryName] = useState("");
-  const [productForm, setProductForm] = useState({ category_id: "", sku: "", name: "", description: "", price: 0, preparation_station: "kitchen" });
   const [qrFile, setQrFile] = useState<File | null>(null);
   const [uploadingQr, setUploadingQr] = useState(false);
+  const [menuCardFile, setMenuCardFile] = useState<File | null>(null);
+  const [uploadingMenuCard, setUploadingMenuCard] = useState(false);
+  const [menuCardPreview, setMenuCardPreview] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastState>(null);
-  const catalog = usePolling(async () => branch ? api<Catalog>(`/catalog?branch_id=${branch.id}`) : Promise.reject(new Error("Selecciona una sucursal")), [branch?.id], 30000);
 
   useEffect(() => {
     if (!branch) return;
@@ -347,8 +282,31 @@ export function SettingsPage() {
       delivery_fee: branch.delivery_fee,
       delivery_enabled: branch.delivery_enabled,
       takeaway_enabled: branch.takeaway_enabled,
+      agent_context_notes: branch.agent_context_notes || "",
     });
   }, [branch]);
+
+  useEffect(() => {
+    let objectUrl: string | null = null;
+    let cancelled = false;
+    if (!branch?.menu_card_configured) {
+      setMenuCardPreview(null);
+      return;
+    }
+    void apiBlob(`/branches/${branch.id}/menu-card`)
+      .then((blob) => {
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(blob);
+        setMenuCardPreview(objectUrl);
+      })
+      .catch(() => {
+        if (!cancelled) setMenuCardPreview(null);
+      });
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [branch?.id, branch?.menu_card_configured]);
 
   async function saveBranch() {
     if (!branch) return;
@@ -378,6 +336,23 @@ export function SettingsPage() {
     }
   }
 
+  async function uploadMenuCard() {
+    if (!branch || !menuCardFile) return;
+    setUploadingMenuCard(true);
+    try {
+      const body = new FormData();
+      body.append("file", menuCardFile);
+      await api(`/branches/${branch.id}/menu-card`, { method: "POST", body });
+      setMenuCardFile(null);
+      await refreshTenant();
+      setToast({ message: "Imagen de la carta guardada de forma privada.", tone: "success" });
+    } catch (caught) {
+      setToast({ message: caught instanceof Error ? caught.message : "No se pudo subir la carta", tone: "error" });
+    } finally {
+      setUploadingMenuCard(false);
+    }
+  }
+
   function togglePaymentMethod(method: string) {
     setBranchForm((current) => ({
       ...current,
@@ -387,11 +362,13 @@ export function SettingsPage() {
     }));
   }
 
-  async function createCategory() { if (!branch || !categoryName) return; try { await api("/catalog/categories", { method: "POST", body: JSON.stringify({ branch_id: branch.id, name: categoryName }) }); setCategoryName(""); await catalog.refresh(); } catch (caught) { setToast({ message: caught instanceof Error ? caught.message : "No se pudo crear", tone: "error" }); } }
-  async function createProduct() { if (!branch || !productForm.name || !productForm.sku || !productForm.category_id) return; try { await api("/catalog/products", { method: "POST", body: JSON.stringify({ ...productForm, branch_id: branch.id, category_id: Number(productForm.category_id) }) }); setProductForm({ category_id: "", sku: "", name: "", description: "", price: 0, preparation_station: "kitchen" }); await catalog.refresh(); setToast({ message: "Producto agregado a la carta.", tone: "success" }); } catch (caught) { setToast({ message: caught instanceof Error ? caught.message : "No se pudo crear", tone: "error" }); } }
   if (!branch || !context) return <LoadingState />;
   return <div className="page-stack settings-page">
-    <PageHeader eyebrow="Administración local" title="Configuración" description="Sucursal, pagos, catálogo y módulos disponibles para este negocio." />
+    <PageHeader
+      eyebrow="Administración local"
+      title="Configuración"
+      description="Sucursal, pagos, carta impresa y contexto autorizado para la atención."
+    />
     <section className="settings-grid">
       <article className="panel">
         <div className="panel-heading"><div><span className="eyebrow">Sucursal</span><h2>Datos operativos</h2></div><Settings2 /></div>
@@ -414,15 +391,32 @@ export function SettingsPage() {
           <label>Número de Yape<input value={branchForm.yape_number} onChange={(event) => setBranchForm({ ...branchForm, yape_number: event.target.value })} inputMode="numeric" /></label>
           <label>Número de Plin<input value={branchForm.plin_number} onChange={(event) => setBranchForm({ ...branchForm, plin_number: event.target.value })} inputMode="numeric" /></label>
           <fieldset><legend>Medios aceptados</legend><div className="payment-checks">{[["cash", "Efectivo"], ["card", "Tarjeta"], ["yape", "Yape"], ["plin", "Plin"], ["transfer", "Transferencia"]].map(([value, label]) => <label key={value}><input type="checkbox" checked={branchForm.accepted_payment_methods.includes(value)} onChange={() => togglePaymentMethod(value)} /> {label}</label>)}</div></fieldset>
-          <label className="file-drop compact"><Upload /><strong>{qrFile?.name || (branch.yape_qr_storage_path ? "QR de Yape configurado" : "Subir QR de Yape")}</strong><small>La imagen se almacena de forma privada y el agente solo obtiene una ruta autorizada.</small><input type="file" accept="image/*" onChange={(event) => setQrFile(event.target.files?.[0] || null)} /></label>
+          <label className="file-drop compact"><Upload /><strong>{qrFile?.name || (branch.yape_qr_configured ? "QR de Yape configurado" : "Subir QR de Yape")}</strong><small>La imagen se almacena de forma privada y el agente solo obtiene una ruta autorizada.</small><input type="file" accept="image/*" onChange={(event) => setQrFile(event.target.files?.[0] || null)} /></label>
           <button className="button button-secondary" disabled={!qrFile || uploadingQr} onClick={() => void uploadYapeQr()}>{uploadingQr ? "Subiendo..." : "Guardar QR de Yape"}</button>
           <button className="button button-primary" onClick={() => void saveBranch()}><Save /> Guardar medios de pago</button>
         </div>
       </article>
 
-      <article className="panel"><div className="panel-heading"><div><span className="eyebrow">Plan {context.business.plan}</span><h2>Módulos habilitados</h2></div><Warehouse /></div><div className="module-list">{Object.entries(context.business.modules).map(([module, enabled]) => <div key={module}><span className={enabled ? "enabled" : "disabled"}>{enabled ? <Check /> : "—"}</span><strong>{module.toUpperCase()}</strong><small>{enabled ? "Disponible para este negocio" : "Deshabilitado por el administrador"}</small></div>)}</div><div className="security-callout"><strong>Seguridad</strong><p>Las claves privadas, tokens y credenciales del agente nunca se muestran en esta aplicación.</p></div></article>
-      <article className="panel"><div className="panel-heading"><div><span className="eyebrow">Carta</span><h2>Nueva categoría</h2></div><Plus /></div><div className="inline-form"><input value={categoryName} onChange={(event) => setCategoryName(event.target.value)} placeholder="Ej. Bebidas" /><button className="button button-primary" onClick={() => void createCategory()}>Crear</button></div><div className="category-chip-list">{catalog.data?.categories.map((category) => <span key={category.id} style={{ borderColor: category.color }}>{category.name}</span>)}</div></article>
-      <article className="panel"><div className="panel-heading"><div><span className="eyebrow">Carta</span><h2>Nuevo producto</h2></div><PackagePlus /></div><div className="form-grid form-stack"><label>Categoría<select value={productForm.category_id} onChange={(event) => setProductForm({ ...productForm, category_id: event.target.value })}><option value="">Seleccionar</option>{catalog.data?.categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label><label>SKU<input value={productForm.sku} onChange={(event) => setProductForm({ ...productForm, sku: event.target.value })} /></label><label>Nombre<input value={productForm.name} onChange={(event) => setProductForm({ ...productForm, name: event.target.value })} /></label><label>Precio<input type="number" min="0" step="0.01" value={productForm.price} onChange={(event) => setProductForm({ ...productForm, price: Number(event.target.value) })} /></label><label>Estación<select value={productForm.preparation_station} onChange={(event) => setProductForm({ ...productForm, preparation_station: event.target.value })}><option value="kitchen">Cocina</option><option value="bar">Barra</option><option value="cold">Fríos</option></select></label><label className="full-field">Descripción<textarea value={productForm.description} onChange={(event) => setProductForm({ ...productForm, description: event.target.value })} /></label><button className="button button-primary full-field" onClick={() => void createProduct()}><Plus /> Agregar producto</button></div></article>
+      <article className="panel settings-agent-card">
+        <div className="panel-heading"><div><span className="eyebrow">Asistente del restaurante</span><h2>Carta e indicaciones</h2></div><ImageIcon /></div>
+        <div className="agent-config-grid">
+          <div className="menu-card-config">
+            <div className={`menu-card-preview ${menuCardPreview ? "has-image" : ""}`}>
+              {menuCardPreview ? <img src={menuCardPreview} alt="Carta impresa configurada" /> : <><ImageIcon /><strong>Sin carta impresa</strong><small>Sube una foto clara para que el equipo y las integraciones autorizadas puedan consultarla.</small></>}
+            </div>
+            <label className="file-drop compact"><Upload /><strong>{menuCardFile?.name || (branch.menu_card_configured ? "Reemplazar imagen de la carta" : "Subir imagen de la carta")}</strong><small>PNG, JPG o WEBP. Máximo 10 MB.</small><input type="file" accept="image/*" onChange={(event) => setMenuCardFile(event.target.files?.[0] || null)} /></label>
+            <button className="button button-secondary" disabled={!menuCardFile || uploadingMenuCard} onClick={() => void uploadMenuCard()}>{uploadingMenuCard ? "Subiendo..." : "Guardar carta impresa"}</button>
+          </div>
+          <div className="agent-context-form">
+            <label>Contexto para la atención<textarea rows={12} maxLength={5000} value={branchForm.agent_context_notes} onChange={(event) => setBranchForm({ ...branchForm, agent_context_notes: event.target.value })} placeholder="Ej. Tono de atención, zonas de reparto, referencias del local, políticas de recojo, ingredientes que suelen consultar..." /></label>
+            <small>{branchForm.agent_context_notes.length}/5000 caracteres. No incluyas contraseñas, tokens ni datos bancarios privados.</small>
+            <div className="agent-context-note"><strong>Cómo se usa</strong><p>Este texto forma parte del contexto autorizado del restaurante. El catálogo estructurado sigue siendo la fuente de precios y disponibilidad.</p></div>
+            <button className="button button-primary" onClick={() => void saveBranch()}><Save /> Guardar indicaciones</button>
+          </div>
+        </div>
+      </article>
+
+      <article className="panel"><div className="panel-heading"><div><span className="eyebrow">POS completo</span><h2>Módulos habilitados</h2></div><Warehouse /></div><div className="module-list">{Object.entries(context.business.modules).map(([module, enabled]) => <div key={module}><span className={enabled ? "enabled" : "disabled"}>{enabled ? <Check /> : "—"}</span><strong>{module.toUpperCase()}</strong><small>{enabled ? "Disponible para este negocio" : "Deshabilitado por el administrador"}</small></div>)}</div><div className="security-callout"><strong>Seguridad</strong><p>Las claves privadas, tokens y credenciales del agente nunca se muestran en esta aplicación.</p></div></article>
     </section>
     {toast && <Toast {...toast} onDismiss={() => setToast(null)} />}
   </div>;

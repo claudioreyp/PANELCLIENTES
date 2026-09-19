@@ -5,3 +5,12 @@ dist/
 playwright-report/
 test-results/
 *.log
+.env.*
+!.env.example
+.vercel/
+e2e/test-output/
+*.tsbuildinfo
+
+.impeccable/review/
+.impeccable/reports/
+.impeccable/*-detector.json

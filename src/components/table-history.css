@@ -1,0 +1,46 @@
+.table-history-workspace { display: grid; gap: 20px; width: 100%; max-width: 1180px; min-width: 0; margin-inline: auto; }
+.tables-history-actions { display: flex; justify-content: flex-end; margin-bottom: 14px; }
+.table-history-back { display: inline-flex; align-items: center; gap: 8px; justify-self: start; padding: 6px 0; min-height: 44px; background: transparent; border: 0; color: var(--pos-primary); text-decoration: underline; text-underline-offset: 3px; }
+.table-history-back svg { width: 20px; }
+.orders-sync-warning { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 12px 16px; border: 1px solid var(--line); border-radius: 7px; background: #fff7e8; color: #74591d; }
+.orders-sync-warning > span { flex: 1 1 240px; }
+.order-list-workspace .orders-toolbar.orders-all-dates { grid-template-columns: minmax(170px, auto) minmax(0, 1fr); }
+.orders-period-label { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 16px; border-right: 1px solid var(--line); min-height: 64px; }
+.orders-period-label svg { flex-shrink: 0; width: 20px; }
+.order-cancelled-label { display: block; color: var(--muted); font-size: .875rem; font-weight: 450; }
+.order-row-cancelled .order-customer-name { text-decoration: line-through; color: var(--muted); }
+.orders-mobile-cards .order-row-cancelled, .orders-desktop-table .order-row-cancelled { background: #fafafa; }
+.history-order-modal { width: min(620px, calc(100vw - 32px)); }
+/* Cancellation is a child of the table account, including its empty-account warning. */
+.modal-backdrop:has(> .order-cancel-modal) { z-index: 200; backdrop-filter: none; }
+.historical-order-content { display: grid; gap: 20px; min-width: 0; }
+.history-order-reference { display: grid; gap: 8px; }
+.history-order-reference time { color: var(--muted); }
+.history-order-meta, .history-payments > header { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.history-table-label, .history-source-label, .history-payment-method { border-radius: 7px; padding: 2px 8px; font-size: .875rem; background: #eee; }
+.history-table-label { background: #fdf1f6; color: #71324a; }
+.history-payments > header { padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.history-payment { display: flex; justify-content: space-between; align-items: start; gap: 16px; padding-block: 14px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.history-payment time { color: var(--muted); flex-shrink: 0; font-size: .875rem; }
+.history-payment small { display: block; margin-top: 4px; color: var(--muted); }
+.history-payment-note { font-size: .875rem; color: var(--muted); }
+.history-totals { margin: 0; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+.history-totals > div { display: flex; justify-content: space-between; gap: 16px; padding: 10px 14px; }
+.history-totals dd { margin: 0; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.history-total { font-weight: 600; }
+.history-collected { border-top: 1px solid var(--line); }
+.history-print { display: flex; justify-content: flex-end; }
+.history-cancellation { display: flex; align-items: start; gap: 10px; padding: 14px; background: #fff7e8; color: #86491d; border: 1px solid #e9cc9d; border-radius: 7px; overflow-wrap: anywhere; }
+.history-cancellation svg { flex-shrink: 0; width: 20px; }
+.history-cancellation p { margin: 4px 0 0; white-space: pre-wrap; }
+.history-order-modal .order-command-expand { min-width: 0; }
+.history-order-modal .order-command-expand small { white-space: normal; }
+@media (pointer: coarse), (max-width: 900px) {
+  .history-order-modal .order-menu-trigger { min-width: 44px; min-height: 44px; }
+}
+@media (max-width: 560px) {
+  .order-list-workspace .orders-toolbar.orders-all-dates { grid-template-columns: 1fr; }
+  .orders-period-label { min-height: 44px; border-right: 0; border-bottom: 1px solid var(--line); }
+  .history-order-modal { width: calc(100vw - 24px); }
+  .history-payment { flex-wrap: wrap; gap: 6px; }
+}
