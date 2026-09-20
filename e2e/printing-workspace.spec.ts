@@ -31,7 +31,7 @@ function expectRawJobs(submissions: QzSubmission[], expected: { jobName: string;
   }
 }
 
-async function prepare(page: Page, connected = true) {
+async function prepare(page: Page, connected = true, identity?: Record<string, unknown>) {
   const writes: unknown[] = [];
   const requests: { path: string; method: string }[] = [];
   page.on("request", (request) => {
@@ -74,7 +74,7 @@ async function prepare(page: Page, connected = true) {
     else if (path === "/settings/branches/1/printing") {
       if (route.request().method() === "PATCH") { const payload = route.request().postDataJSON(); writes.push(payload); printing = { ...printing, ...payload, version: printing.version + 1 }; }
       body = printing;
-    } else if (path === "/settings/branches/1/printing/qz") body = { mode: "manual-approval", certificate: null };
+    } else if (path === "/settings/branches/1/printing/qz") body = identity ? { mode: "signed", certificate: "public-test-certificate", identity } : { mode: "manual-approval", certificate: null };
     else if (path === "/settings/branches/1/agent") body = { branch_id: 1, version: 1, name: null, images: [], yape_qr_url: null };
     else if (path === "/orders/workspace") body = { branch_id: 1, period: "all", view: "orders", items: [], total: 0, page: 1, page_size: 20, review_count: 0 };
     else if (path === "/catalog") body = { categories: [], products: [], modifier_groups: [], promotions: [] };
@@ -83,6 +83,26 @@ async function prepare(page: Page, connected = true) {
   });
   return { writes, requests };
 }
+
+test("official QZ guidance preserves settings and shows renewal without a self-signed installer", async ({ page }, info) => {
+  const { writes } = await prepare(page, true, {
+    subject: "CN=Escalar AI POS, O=Escalar AI", issuer: "CN=Fixture issuer - not a real certificate",
+    fingerprint_sha256: "a".repeat(64), valid_to: "2026-10-01T00:00:00Z", expires_soon: true,
+    trust: "qz-issued", activation: "remember",
+  });
+  await page.goto("/configuracion/impresion");
+  await expect(page.getByText("QZ Tray conectado", { exact: true })).toBeVisible();
+  await page.getByText("Conexión y prueba de impresión", { exact: true }).click();
+  await expect(page.getByText(/Remember this decision/)).toBeVisible();
+  await expect(page.getByText(/El certificado vence en los próximos 30 días/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Descargar activación de QZ" })).toHaveCount(0);
+  await page.getByText("Datos públicos del certificado", { exact: true }).click();
+  await expect(page.getByText("a".repeat(64), { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  expect(writes).toHaveLength(0);
+  expect(await sentJobs(page)).toHaveLength(0);
+  await page.screenshot({ path: `.impeccable/review/qz-official-${info.project.name}.png`, fullPage: true });
+});
 
 test("detects printers, autosaves main choices, and explicitly saves the configuration draft", async ({ page }, info) => {
   const { writes } = await prepare(page);
@@ -132,7 +152,11 @@ test("detects printers, autosaves main choices, and explicitly saves the configu
 });
 
 test("downloads explicit one-time QZ activation without changing printing or sending paper", async ({ page }, info) => {
-  const { writes, requests } = await prepare(page);
+  const { writes, requests } = await prepare(page, true, {
+    subject: "CN=Escalar AI POS", issuer: "CN=Escalar AI POS",
+    fingerprint_sha256: "b".repeat(64), valid_to: "2099-01-01T00:00:00Z", expires_soon: false,
+    trust: "self-signed", activation: "install-certificate",
+  });
   await page.route("**/api/v1/settings/branches/1/printing/qz/activation", route => route.fulfill({
     contentType: "application/zip", body: Buffer.from("public activation test fixture"),
   }));
@@ -169,7 +193,7 @@ for (const mode of ["manual-approval", "signed"] as const) {
       await expect(page.getByText(/No autorices permanentemente solicitudes anónimas/)).toBeVisible();
     } else {
       await expect(page.getByText("Firma del servidor activa.", { exact: true })).toBeVisible();
-      await expect(page.getByText(/Remember this decision/)).toBeVisible();
+      await expect(page.getByText(/Pide al administrador que confirme el tipo de certificado/)).toBeVisible();
       await expect(page.getByText("Autorización por trabajo.", { exact: true })).toHaveCount(0);
     }
     expect(writes).toEqual([]);

@@ -4,7 +4,7 @@ import { useQzPrinters } from "../../lib/use-qz-printers";
 import { printerCompatibilityError } from "../../lib/qz-tray";
 import { loadSettings } from "../../lib/settings";
 import { PrintingDiagnostics } from "./PrintingDiagnostics";
-import { QzActivationDownload } from "./QzActivationDownload";
+import { QzIdentityDetails } from "./QzIdentityDetails";
 import { PrintingConfigurationDialog, PrintingTemplateEditor } from "./PrintingEditors";
 import type { PrintSettings, QzConnectionState, TicketField } from "../../types/settings";
 import {
@@ -194,8 +194,7 @@ export function PrintingSettings({ branchId, businessName, branchName }: { branc
               </div>
               {qzState !== "connected" && <p className="settings-muted">El navegador y QZ Tray tienen permisos independientes. Autoriza únicamente este POS. Reintentaremos mientras abres QZ Tray; un permiso bloqueado requiere tu intervención.</p>}
               {qz.data?.mode === "manual-approval" && <p className="settings-muted">Para imprimir sin avisos, el administrador debe configurar un certificado de confianza y su firma en la API. No autorices permanentemente solicitudes anónimas ni desactives la seguridad de QZ Tray.</p>}
-              {qz.data?.mode === "signed" && <p className="settings-muted"><strong>Firma del servidor activa.</strong> Para usar el certificado propio en otro equipo, descarga y ejecuta la activación de QZ. Si utilizas un certificado comercial reconocido, puedes marcar «Remember this decision» y pulsar «Allow» una vez. Si aparece «Anonymous» o «Untrusted website», revisa la activación antes de autorizar. La firma no confirma por sí sola la confianza de este equipo.</p>}
-              <QzActivationDownload key={branchId} branchId={branchId} disabled={locked} />
+              <QzIdentityDetails data={qzState === "connected" ? qz.data : null} branchId={branchId} disabled={locked} />
             </div>
             <PrintingDiagnostics key={`${branchId}:${JSON.stringify(resource.data)}`} branchId={branchId} businessName={businessName} branchName={branchName} settings={resource.data} printers={qz.data} disabled={cannotPrint} onReload={() => void resource.reload()} />
           </details>

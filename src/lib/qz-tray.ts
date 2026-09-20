@@ -20,9 +20,14 @@ export type QzRuntime = {
   };
 };
 
-type ConnectionSettings = { mode: "signed" | "manual-approval"; certificate: string | null };
+export type QzIdentity = {
+  subject: string; issuer: string; fingerprint_sha256: string; valid_to: string;
+  expires_soon: boolean; trust: "self-signed" | "qz-issued";
+  activation: "remember" | "install-certificate" | "administrator";
+};
+type ConnectionSettings = { mode: "signed" | "manual-approval"; certificate: string | null; identity?: QzIdentity };
 export type QzPrinterDetail = { name: string; driver: string | null };
-export type QzPrinters = { printers: string[]; details: QzPrinterDetail[]; mode: ConnectionSettings["mode"] };
+export type QzPrinters = { printers: string[]; details: QzPrinterDetail[]; mode: ConnectionSettings["mode"]; identity?: QzIdentity };
 export const ESCPOS_FEED_CUT = "0A1D564100";
 
 export function printerCompatibilityError(printer: QzPrinterDetail | undefined, language: "pixel" | "escpos" = "pixel") {
@@ -67,6 +72,9 @@ export async function qzFailure(error: unknown): Promise<QzError> {
     denied ||= permission?.state === "denied";
   } catch { /* Older browsers do not expose the local-network permission. */ }
   if (denied) return new QzError("denied", "El acceso fue bloqueado. Permite el acceso a apps de este dispositivo en los permisos del sitio y revisa QZ Tray > Site Manager. Después pulsa Reintentar.");
+  if (/certificate|signature|untrusted|certificado|firma/i.test(message)) {
+    return new QzError("error", "QZ Tray no pudo verificar el certificado o la firma. Revisa la identidad con el administrador antes de reintentar; no se enviarán solicitudes anónimas.");
+  }
   if (/websocket|unable to establish|connection.*closed|not connected/i.test(message)) {
     return new QzError("not-open", "Abre QZ Tray en este equipo. Si ya está abierto, revisa el permiso del navegador y el certificado local de QZ Tray.");
   }
@@ -100,6 +108,24 @@ function enqueue<T>(work: (operation: SigningOperation) => Promise<T>): Promise<
   return task;
 }
 
+async function connectTransport(qz: QzRuntime, signal: AbortSignal) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    signal.throwIfAborted();
+    try {
+      await interrupted(qz.websocket.connect({ retries: 0, keepAlive: 30 }), signal);
+      return;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      // Retry only a failed transport, before any print is claimed or sent.
+      // Denials, signing failures, timeouts and cancellation need explicit action.
+      if (attempt || signal.aborted || error instanceof QzError
+          || /denied|blocked|permission|not allowed|certificate|signature|rechaz|deneg/i.test(message)
+          || !/unable to establish connection|connection.*closed|ECONNREFUSED/i.test(message)) throw error;
+      await closeConnection();
+    }
+  }
+}
+
 async function connect(branchId: number, signal: AbortSignal, onState: (state: QzConnectionState) => void, operation: SigningOperation, orderId?: number) {
       signal.throwIfAborted();
       onState("loading");
@@ -107,6 +133,10 @@ async function connect(branchId: number, signal: AbortSignal, onState: (state: Q
       signal.throwIfAborted();
       if (!config || !["signed", "manual-approval"].includes(config.mode) || (config.mode === "signed" && (typeof config.certificate !== "string" || !config.certificate.trim())) || (config.mode === "manual-approval" && config.certificate !== null)) {
         throw new QzError("error", "La API no es compatible con la conexión de impresoras. Actualiza el servicio y reintenta.");
+      }
+      if (config.mode === "manual-approval" && import.meta.env.PROD) {
+        await closeConnection();
+        throw new QzError("error", "La firma de impresión no está configurada. Pide al administrador que revise el certificado del servidor; no se enviarán solicitudes anónimas.");
       }
       const qz = await loadRuntime();
       signal.throwIfAborted();
@@ -162,12 +192,14 @@ async function connect(branchId: number, signal: AbortSignal, onState: (state: Q
         }).catch(reject);
       });
       try {
-        onState("permission");
-        if (!qz.websocket.isActive()) await interrupted(qz.websocket.connect({ retries: 0, keepAlive: 30 }), signal);
+        if (!qz.websocket.isActive()) {
+          onState("permission");
+          await connectTransport(qz, signal);
+        }
         signal.throwIfAborted();
         connectedCertificate = config.certificate;
         onState("connecting");
-        return { qz, mode: config.mode };
+        return { qz, mode: config.mode, ...(config.identity ? { identity: config.identity } : {}) };
       } catch (error) {
         await closeConnection();
         throw error;
@@ -198,8 +230,8 @@ export const qzBridge = {
   printers(branchId: number, signal: AbortSignal, onState: (state: QzConnectionState) => void): Promise<QzPrinters> {
     // QZ has one socket and global signing callbacks, shared by all views.
     return enqueue(async (operation) => {
-      const { qz, mode } = await connect(branchId, signal, onState, operation);
-      try { return { ...await findPrinters(qz, signal), mode }; }
+      const { qz, mode, identity } = await connect(branchId, signal, onState, operation);
+      try { return { ...await findPrinters(qz, signal), mode, ...(identity ? { identity } : {}) }; }
       catch (error) { await closeConnection(); throw error; }
     });
   },

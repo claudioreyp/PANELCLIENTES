@@ -62,3 +62,5 @@
   .printing-preview-pane { padding: 20px 12px 32px; }
   .printing-printer-row { grid-template-columns: minmax(0, 1fr); }
 }
+.qz-identity-details dd { margin-inline-start: 0; overflow-wrap: anywhere; }
+.qz-identity-details dt { font-weight: 600; margin-block-start: 12px; }

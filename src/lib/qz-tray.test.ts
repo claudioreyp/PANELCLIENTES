@@ -29,7 +29,26 @@ describe("bundled QZ connector", () => {
     mocks.qz.print.mockResolvedValue(undefined);
     mocks.qz.configs.create.mockReturnValue({ printer: "POS-80" });
   });
-  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
+  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
+
+  it("refuses an anonymous server configuration in a production build before opening QZ", async () => {
+    vi.stubEnv("PROD", true);
+    const { qzBridge } = await import("./qz-tray");
+    await expect(qzBridge.printers(7, new AbortController().signal, vi.fn())).rejects.toThrow("solicitudes anónimas");
+    expect(mocks.qz.websocket.connect).not.toHaveBeenCalled();
+    expect(mocks.qz.print).not.toHaveBeenCalled();
+  });
+
+  it("keeps identity metadata and reuses an authorized socket without asking again", async () => {
+    const identity = { subject: "CN=Escalar AI POS", issuer: "CN=Test", fingerprint_sha256: "a".repeat(64), valid_to: "2099-01-01T00:00:00Z", expires_soon: false, trust: "qz-issued", activation: "remember" };
+    mocks.api.mockResolvedValue({ mode: "signed", certificate: "same-public-identity", identity });
+    const { qzBridge } = await import("./qz-tray");
+    expect(await qzBridge.printers(7, new AbortController().signal, vi.fn())).toMatchObject({ identity });
+    const state = vi.fn();
+    await qzBridge.printers(7, new AbortController().signal, state);
+    expect(mocks.qz.websocket.connect).toHaveBeenCalledOnce();
+    expect(state).not.toHaveBeenCalledWith("permission");
+  });
 
   it("loads the official bundled connector without a script URL and requests native approval", async () => {
     const { qzBridge } = await import("./qz-tray");
@@ -303,7 +322,9 @@ describe("bundled QZ connector", () => {
   it("allows retry after connection failure and cancels a pending discovery", async () => {
     const { qzBridge } = await import("./qz-tray");
     mocks.qz.websocket.connect.mockRejectedValueOnce(new Error("Unable to establish connection"));
+    mocks.qz.websocket.connect.mockRejectedValueOnce(new Error("Unable to establish connection"));
     await expect(qzBridge.printers(7, new AbortController().signal, vi.fn())).rejects.toThrow();
+    expect(mocks.qz.websocket.connect).toHaveBeenCalledTimes(2);
     expect((await qzBridge.printers(7, new AbortController().signal, vi.fn())).printers).toEqual(["POS-80"]);
     mocks.qz.printers.details.mockImplementationOnce(() => new Promise(() => {}));
     const controller = new AbortController();
@@ -313,6 +334,28 @@ describe("bundled QZ connector", () => {
     await expect(request).rejects.toMatchObject({ name: "AbortError" });
     await qzBridge.disconnect();
     expect(mocks.active).toBe(false);
+  });
+
+  it("reconnects a failed transport once without replaying an operation", async () => {
+    mocks.qz.websocket.connect.mockRejectedValueOnce(new Error("Connection closed"));
+    const { qzBridge } = await import("./qz-tray");
+    expect((await qzBridge.printers(7, new AbortController().signal, vi.fn())).printers).toEqual(["POS-80"]);
+    expect(mocks.qz.websocket.connect).toHaveBeenCalledTimes(2);
+    expect(mocks.qz.printers.details).toHaveBeenCalledOnce();
+    expect(mocks.qz.print).not.toHaveBeenCalled();
+  });
+
+  it.each(["Connection closed: permission denied", "Connection closed: invalid certificate", "Connection closed: signature rejected"])("never repeats a blocked handshake: %s", async (message) => {
+    mocks.qz.websocket.connect.mockRejectedValueOnce(new Error(message));
+    const { qzBridge } = await import("./qz-tray");
+    await expect(qzBridge.printers(7, new AbortController().signal, vi.fn())).rejects.toThrow(message);
+    expect(mocks.qz.websocket.connect).toHaveBeenCalledOnce();
+    expect(mocks.qz.printers.details).not.toHaveBeenCalled();
+  });
+
+  it.each(["Connection closed: invalid certificate", "Connection closed: signature rejected", "Untrusted website"])("does not classify trust errors as retryable transport failures: %s", async (message) => {
+    const { qzFailure } = await import("./qz-tray");
+    expect((await qzFailure(new Error(message))).state).toBe("error");
   });
 
   it.each([58, 80] as const)("renders %s mm HTML through explicit ESC/POS, with feed and cut but no drawer pulse", async (paperWidth) => {

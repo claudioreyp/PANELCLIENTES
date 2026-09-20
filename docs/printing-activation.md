@@ -7,6 +7,36 @@ el contrato completo esta en
 
 ## Estado y pendientes
 
+La decision actual (2026-09-20) es usar un certificado oficial de QZ. La compra,
+emision y activacion no se han realizado. La seccion de activacion propia mas
+abajo se conserva como historial, no como instruccion para instalar esa identidad
+en equipos nuevos. La clave propia anterior esta documentada como expuesta.
+No reutilizarla para la identidad oficial ni restaurarla como contingencia.
+Procedimiento del servidor: [transicion oficial](../../Apis/docs/qz-official-activation.md).
+
+El codigo compatible valida la cadena oficial, publica metadatos de identidad y
+vencimiento y muestra aviso durante los ultimos 30 dias. Solo QZ Tray comprueba
+y muestra su distintivo nativo; la web no lo simula. Cuando el servidor entregue
+una identidad oficial, el POS no ofrece el instalador de confianza propia:
+indica verificar la identidad, marcar `Remember this decision` y pulsar `Allow`
+una vez por instalacion/usuario del sistema operativo. Cambiar de empleado del
+POS no cambia la identidad QZ. Los permisos del navegador son independientes.
+
+La sesion firmada se reutiliza y se renueva si cambia el certificado. Un fallo
+de transporte antes del envio admite un solo reintento; permisos rechazados,
+firma invalida, cancelacion y timeout no se repiten automaticamente. Nunca se
+repite `print` por este mecanismo; un resultado incierto sigue bloqueado y un
+ACK fallido sigue reintentando solo el ACK. No se habilitan preferencias apagadas.
+
+Verificacion de esta transicion: 775 Vitest aprobadas, lint y build correctos,
+36 Playwright de impresion aprobados en escritorio/tablet/movil con QZ/API
+simulados. Revision visual agrupada y detector Impeccable sin hallazgos nuevos.
+Se conserva el aviso previo de bundle mayor a 500 kB. Los cinco tests PostgreSQL
+de API se omitieron en la ejecucion local; no hubo cambios de esquema.
+Versiones publicadas y comprobaciones HTTPS: `Apis/docs/deployment-runbook.md`.
+Falta la comprobacion fisica con certificado oficial, estacion limpia y equipos
+macOS/Linux; no atribuirle las pruebas de papel de la identidad propia anterior.
+
 Actualizacion de personalizacion y ahorro de papel: el usuario confirma que hay
 texto visible, pero algunos documentos dejan demasiado papel blanco al final.
 QZ 2.3.0 registro rasterizaciones de 576 x 5856 y 576 x 3692 para documentos cortos.
@@ -100,8 +130,10 @@ la cuchilla sigue dependiendo del modelo. Referencia:
 
 ## Permisos y firma
 
-Sin certificado/firma configurados, la API indica `manual-approval` y QZ solicita
-autorizacion nativa. No simular ese dialogo ni deshabilitar sus controles. Si se
+Solo en desarrollo/pruebas, sin certificado/firma configurados, la API puede indicar
+`manual-approval`. En produccion su ausencia devuelve 503 y el build del POS
+rechaza tambien una respuesta anonima heredada. No simular el dialogo ni
+deshabilitar sus controles. Si se
 requiere operar sin avisos repetidos, el administrador debe configurar un
 certificado de confianza y su firma en el servidor, ademas de autorizar el sitio.
 Un certificado de firma no sustituye los permisos del navegador o del sistema.
@@ -120,10 +152,11 @@ El PEM publico se valida y serializa de nuevo; certificado y clave concatenados
 se rechazan antes de cualquier respuesta o descarga. El ZIP solo admite la
 identidad propia unica, no sustituye cadenas comerciales ni otras raices.
 
-### Activacion unica de confianza
+### Historial: activacion propia de confianza
 
-El usuario eligio **certificado propio, activacion unica por equipo**. No hace
-falta autorizar sitios anonimos ni comprar un certificado comercial para este flujo.
+Esta fue la eleccion del 12 de septiembre, reemplazada por el plan oficial del
+20 de septiembre. No ejecutar estos pasos con la identidad expuesta. Se conservan
+para entender la configuracion antigua antes de retirarla por huella supervisada.
 
 1. En el host de la API, un administrador genera UNA identidad con
    `python scripts/create_qz_identity.py <directorio-privado-fuera-del-workspace>`.
@@ -193,8 +226,11 @@ su lista limitada de operaciones. No se aceptan hashes opacos de esos roles.
 El cache temporal se limpia al terminar/cancelar, sin firmas anonimas de respaldo.
 Para esos roles, el destino debe ser exactamente `printer: {name}`: una cola
 instalada en el sistema, incluida una cola de impresora de red. Se rechazan
-destinos `host`, `port` y `file`, incluso junto a `name`. El contrato administrativo
-anterior se conserva; este cambio no concede nuevas operaciones a ningun rol.
+destinos `host`, `port` y `file`, incluso junto a `name`. Desde la transicion oficial,
+estas restricciones se aplican tambien a propietarios, gerentes y superadministradores:
+el firmador compartido no acepta hashes opacos ni operaciones ajenas a imprimir.
+El conector actual envia siempre el JSON exacto y su hash. Los clientes antiguos
+que envian JSON conservan su contrato.
 
 Verificacion de activacion propia (2026-09-12): 727 Vitest, 661 Pytest y una
 omision por PostgreSQL no configurado; lint, build y 33 Playwright aprobados.

@@ -74,7 +74,8 @@ describe("printing configuration and QZ discovery", () => {
     await screen.findByText("QZ Tray conectado");
     fireEvent.click(screen.getByText("Conexión y prueba de impresión"));
     expect(screen.getByText("Firma del servidor activa.")).toBeVisible();
-    expect(screen.getByText(/Remember this decision/)).toBeVisible();
+    expect(screen.getByText(/confirme el tipo de certificado/)).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Descargar activación de QZ" })).not.toBeInTheDocument();
     expect(screen.queryByText("Autorización por trabajo.")).not.toBeInTheDocument();
   });
 
