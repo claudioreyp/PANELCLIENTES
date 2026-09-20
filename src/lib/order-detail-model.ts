@@ -6,8 +6,8 @@ export function countLabel(count: number, singular: string, plural: string) {
 }
 
 export function hasOpenPaymentEvidence(order: OrderDetail) {
-  const evidenceStatus = order.payment_evidence?.status;
-  return ["evidence_received", "under_review"].includes(evidenceStatus || "")
+  const evidence = order.payment_evidences || (order.payment_evidence ? [order.payment_evidence] : []);
+  return evidence.some((item) => ["evidence_received", "under_review"].includes(item.status))
     || ["evidence_received", "under_review"].includes(order.payment_status);
 }
 
@@ -16,7 +16,15 @@ export function nextAction(order: OrderDetail) {
   if (["draft", "pending_confirmation", "confirmed"].includes(order.status) && order.items.some(isActiveOrderItem)) return { label: "Enviar a cocina", kind: "kitchen" };
   if (order.status === "sent_to_kitchen") return null;
   if (order.status === "preparing") return null;
+  const pendingRequests = (order.payment_requests || []).some((request) =>
+    request.purpose === "addition" ? ["pending", "under_review"].includes(request.status)
+      : request.method === "unselected" || (request.method === "yape" && request.status !== "paid"));
+  if (pendingRequests || order.delivery_fee_status === "pending_quote") return null;
   if (order.status === "ready" && order.channel === "delivery") return { label: "Despachar delivery", kind: "dispatched" };
+  if (order.status === "ready" && ["agent", "n8n", "whatsapp", "whatsapp_agent"].includes(order.source)) {
+    if (order.channel === "takeaway") return { label: "Marcar recogido", kind: "delivered" };
+    if (order.channel === "counter") return { label: "Marcar servido", kind: "delivered" };
+  }
   if (order.status === "dispatched") return { label: "Marcar entregado", kind: "delivered" };
   return null;
 }

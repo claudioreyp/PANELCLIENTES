@@ -60,7 +60,7 @@ function orderDetail(id: number, number: string, customerName: string, folio: nu
     },
     payments: [{ id: 60, order_id: id, method: "yape", amount: 20, status: "confirmed", created_at: "2026-08-27T15:01:00-05:00" }],
     payment_evidence: [
-      { id: 70, order_id: id, provider: "yape", amount_detected: 15, operation_number: "OP-ANTERIOR", security_code: "111", recipient: "Pizza House", status: "under_review", warnings: [], image_url: "", created_at: "2026-08-27T15:00:00-05:00" },
+      { id: 70, order_id: id, provider: "yape", amount_detected: 15, operation_number: "OP-ANTERIOR", security_code: "111", recipient: "Pizza House", status: "superseded", warnings: [], image_url: "", created_at: "2026-08-27T15:00:00-05:00" },
       { id: 71, order_id: id, provider: "yape", amount_detected: 20, operation_number: "OP-RECIENTE", security_code: "742", recipient: "Pizza House", status: "evidence_received", warnings: [], image_url: "", created_at: "2026-08-27T15:02:00-05:00" },
     ],
     tickets: [
@@ -436,6 +436,65 @@ async function addPersonalPizzaToNewOrder(page: Page) {
   return drawer;
 }
 
+test("WhatsApp quoted shipping saves independently and never dispatches an undefined fee", async ({ page }, testInfo) => {
+  const mock = await mockOrdersApi(page);
+  const detail = mock.details.get(8)!;
+  Object.assign(detail.order, { source: "whatsapp_agent", status: "ready", total: 30, delivery_fee: 0, delivery_fee_status: "pending_quote", final_total: null });
+  detail.payment_evidence = [];
+  detail.payment_summary = { paid: 30, remaining: 0 };
+  Object.assign(mock.orders[0], detail.order);
+  const writes: unknown[] = [];
+  await page.route("**/api/v1/orders/8/delivery-fee", async (route) => {
+    const body = route.request().postDataJSON();
+    writes.push(body);
+    expect(route.request().headers()["idempotency-key"]).toBeTruthy();
+    expect(body).toEqual({ expected_version: 3, amount: 6, method: "cash" });
+    Object.assign(detail.order, { total: 36, delivery_fee: 6, delivery_fee_status: "final", final_total: 36, version: 4 });
+    Object.assign(detail, { payment_requests: [{ id: "shipping", order_id: 8, purpose: "delivery", method: "cash", amount: 6, status: "pending", version: 1, items: [] }] });
+    detail.payment_summary.remaining = 6;
+    return json(route, { order: detail.order });
+  });
+  await page.goto("/pedidos");
+  await page.getByRole("button", { name: /Abrir pedido 7 de/ }).click();
+  const dialog = page.getByRole("dialog", { name: /Pedido #7/ });
+  await expect(dialog.getByText("Importe conocido (sin envío)")).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Despachar delivery" })).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Definir costo de envío" }).click();
+  const form = page.getByRole("dialog", { name: "Definir costo de envío", exact: true });
+  await form.getByLabel("Costo de envío (S/)").fill("6");
+  await form.getByLabel("Forma de cobro acordada").selectOption("cash");
+  await page.screenshot({ path: testInfo.outputPath("agent-shipping-form.png"), fullPage: true });
+  await form.getByRole("button", { name: "Confirmar costo" }).click();
+  await expect(dialog.getByText(/Efectivo al recibir/)).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Despachar delivery" })).toBeEnabled();
+  expect(writes).toHaveLength(1);
+  expect(mock.paymentPayloads).toHaveLength(0);
+  expect(mock.transitionPayloads).toHaveLength(0);
+  await page.screenshot({ path: testInfo.outputPath("agent-shipping-detail.png"), fullPage: true });
+});
+
+test("WhatsApp initial and additional receipts are separate and approval order is clear", async ({ page }, testInfo) => {
+  const mock = await mockOrdersApi(page);
+  const detail = mock.details.get(8)!;
+  Object.assign(detail.order, { source: "whatsapp_agent", status: "pending_confirmation", payment_status: "under_review" });
+  Object.assign(detail.payment_evidence[0], { status: "under_review", image_url: "/payment-evidence/70/image", expected_amount: 35 });
+  Object.assign(detail.payment_evidence[1], { image_url: "/payment-evidence/71/image", payment_request_id: "addition", expected_amount: 20 });
+  Object.assign(detail, { payment_requests: [{ id: "addition", order_id: 8, purpose: "addition", method: "yape", amount: 20, status: "under_review", version: 1, items: [] }] });
+  await page.route("**/api/v1/payment-evidence/*/image", (route) => route.fulfill({ contentType: "image/png", body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jR9sAAAAASUVORK5CYII=", "base64") }));
+  await page.goto("/pedidos");
+  await page.getByRole("button", { name: /Abrir pedido 7 de/ }).click();
+  const initial = page.getByRole("region", { name: "Comprobante: Pedido original" });
+  const addition = page.getByRole("region", { name: "Comprobante: Productos adicionales" });
+  await expect(initial.getByText("111", { exact: true })).toBeVisible();
+  await expect(addition.getByText("742", { exact: true })).toBeVisible();
+  await expect(addition.getByRole("button", { name: "Aprobar pago y preparar adición" })).toBeDisabled();
+  await expect(initial.getByRole("button", { name: "Aprobar pago y preparar", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Cerrar operación" })).toHaveCount(0);
+  await addition.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath("agent-independent-receipts.png"), fullPage: true });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
 test("completed kitchen command shows prepared products in the order detail and reopening clears them", async ({ page }, testInfo) => {
   const mock = await mockOrdersApi(page);
   await page.route("**/api/v1/orders/12/printing", (route) => json(route, { order_id: 12, items: [], recoverable_error: false }));
@@ -573,7 +632,7 @@ test("shows a responsive order workspace and normalizes the new detail wrapper",
   const detail = page.getByRole("dialog", { name: "Pedido #7 \u00b7 #0008" });
   await expect(detail).toBeVisible();
   await expect(detail.getByText("OP-RECIENTE")).toBeVisible();
-  await expect(detail.getByText("OP-ANTERIOR")).toHaveCount(0);
+  await expect(detail.getByText("OP-ANTERIOR")).toBeVisible();
   await expect(detail.getByRole("button", { name: /Cobrar/ })).toHaveCount(0);
   await expect(detail.getByRole("button", { name: "Agregar productos" })).toHaveCount(0);
   await expect(detail.getByRole("button", { name: "Marcar listo" })).toHaveCount(0);

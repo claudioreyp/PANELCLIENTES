@@ -22,7 +22,7 @@ export type Branch = {
   accepted_payment_methods: string[];
   delivery_enabled: boolean;
   takeaway_enabled: boolean;
-  delivery_fee: number;
+    delivery_fee: number;
   yape_number?: string | null;
   plin_number?: string | null;
   payment_recipient_name?: string | null;
@@ -172,6 +172,8 @@ export type Order = {
   promotion_discount?: number;
   applied_promotions?: Record<string, unknown>[];
   delivery_fee: number;
+  delivery_fee_status?: "pending_quote" | "final";
+  final_total?: number | null;
   total: number;
   notes?: string | null;
   version: number;
@@ -198,6 +200,7 @@ export type OrderWorkspaceItem = {
   paid_amount?: number;
   total: number;
   delivery_fee: number;
+  delivery_fee_status?: "pending_quote" | "final";
   requires_review: boolean;
   item_count: number;
   version: number;
@@ -231,6 +234,8 @@ export type OrderDetail = Order & {
   edit_policy?: { can_edit: boolean; fulfillment_locked: boolean; reason: string | null };
   payments: OrderPayment[];
   payment_evidence?: PaymentEvidence | null;
+  payment_evidences?: PaymentEvidence[];
+  payment_requests?: OrderPaymentRequest[];
   kitchen_tickets: KitchenTicket[];
   paid_amount: number;
   remaining_amount: number;
@@ -240,6 +245,8 @@ export type PaymentEvidence = {
   id: number;
   order_id: number;
   provider: string;
+  payment_request_id?: string | null;
+  expected_amount?: number | null;
   amount_detected?: number | null;
   operation_number?: string | null;
   security_code?: string | null;
@@ -254,6 +261,17 @@ export type PaymentEvidence = {
   warnings: string[];
   image_url: string;
   created_at: string;
+};
+
+export type OrderPaymentRequest = {
+  id: string;
+  order_id: number;
+  purpose: "addition" | "delivery";
+  method: "cash" | "yape" | "unselected";
+  amount: number;
+  status: string;
+  version: number;
+  items: { name: string; quantity: string; variant_name?: string | null }[];
 };
 
 export type RestaurantTable = {

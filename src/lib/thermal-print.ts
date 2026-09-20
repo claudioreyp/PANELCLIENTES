@@ -172,7 +172,8 @@ function renderTotals(order: OrderDetail, showPayment: boolean): string {
     ${row("Productos", order.subtotal)}
     ${numeric(order.discount) && order.discount > 0 ? row("Descuento", -order.discount) : ""}
     ${numeric(order.delivery_fee) && order.delivery_fee > 0 ? row("Envío", order.delivery_fee) : ""}
-    ${row("Monto a pagar", order.total, true)}
+    ${order.delivery_fee_status === "pending_quote" ? '<p>Envío por cotizar. No incluido en el importe conocido.</p>' : ""}
+    ${row(order.delivery_fee_status === "pending_quote" ? "Importe conocido (sin envío)" : "Monto a pagar", order.total, true)}
   </dl>${showPayment && payments ? `<section class="thermal-payment" aria-label="Pago">${payments}</section>` : ""}`;
 }
 

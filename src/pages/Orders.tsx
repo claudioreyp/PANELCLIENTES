@@ -19,7 +19,7 @@ import { OrderListPanel } from "../components/OrderListPanel";
 import { OrderEditDrawer } from "../components/OrderEditDrawer";
 import { activeCommandItems, CANCEL_ALL_ITEMS_MESSAGE, orderIdentityText, isActiveOrderItem, orderClipboardText, orderServiceChannel } from "../lib/order-presentation";
 import { EmptyState, ErrorState, LoadingState, Modal, Toast } from "../components/ui";
-import { api, apiBlob } from "../lib/api";
+import { api } from "../lib/api";
 import { requestManualPrinting } from "../lib/print-events";
 import { normalizeCatalogPayload } from "../lib/catalog";
 import { useBranchRealtime } from "../lib/hooks";
@@ -99,7 +99,8 @@ export function OrdersPage() {
   const [working, setWorking] = useState(false);
   const printBusy = useRef(false);
   const [toast, setToast] = useState<ToastState>(null);
-  const [evidenceImage, setEvidenceImage] = useState<string | null>(null);
+  const reviewingEvidence = useRef(false);
+  const reviewIntent = useRef<IdempotentIntent | null>(null);
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [selectedTable, setSelectedTable] = useState<RestaurantTable | null>(null);
   const [tableCheckoutMode, setTableCheckoutMode] = useState(false);
@@ -266,27 +267,6 @@ export function OrdersPage() {
   });
 
   const selectedEvidence = detail?.payment_evidence || null;
-  const selectedEvidenceId = selectedEvidence?.id;
-  const selectedEvidenceUrl = selectedEvidence?.image_url;
-
-  useEffect(() => {
-    let objectUrl: string | null = null;
-    let cancelled = false;
-    setEvidenceImage(null);
-    if (!selectedEvidenceId || !selectedEvidenceUrl) return;
-    void apiBlob(selectedEvidenceUrl)
-      .then((blob) => {
-        if (cancelled) return;
-        objectUrl = URL.createObjectURL(blob);
-        setEvidenceImage(objectUrl);
-      })
-      .catch(() => setEvidenceImage(null));
-    return () => {
-      cancelled = true;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [selectedEvidenceId, selectedEvidenceUrl]);
-
   async function refreshOrder(orderId = selectedId) {
     if (!isCurrentBranch()) return;
     await workspace.refresh();
@@ -493,34 +473,42 @@ export function OrdersPage() {
     }
   }
 
-  async function reviewEvidence(approve: boolean) {
-    if (!detail || !isCurrentSelection(detail) || !selectedEvidence) return;
+  async function reviewEvidence(approve: boolean, selected = selectedEvidence || undefined) {
+    if (!detail || !isCurrentSelection(detail) || !selected || reviewingEvidence.current) return;
+    const request = detail.payment_requests?.find((item) => item.id === selected.payment_request_id);
     const question = approve
-      ? "¿Confirmas que el monto y los datos del comprobante son correctos? El pedido pasará a cocina."
-      : "¿Rechazar este comprobante? El pedido se cancelará y el stock reservado será revertido.";
+      ? request?.purpose === "delivery" ? "¿Confirmas que el comprobante cubre el costo de envío? No se enviarán productos a cocina."
+        : request ? "¿Confirmas el pago del extra? Solo los productos adicionales pasarán a cocina."
+          : "¿Confirmas que el monto y los datos del comprobante son correctos? El pedido pasará a cocina."
+      : request ? "¿Rechazar este comprobante adicional? El pedido original y sus pagos se conservan."
+        : detail.payment_requests?.length ? "¿Rechazar el comprobante original? Las adiciones quedarán pendientes de revisión, sin enviarse a cocina."
+          : "¿Rechazar este comprobante? El pedido se cancelará y el stock reservado será revertido.";
     if (!window.confirm(question)) return;
+    const signature = `${detail.branch_id}:${detail.id}:${selected.id}:${approve}`;
+    reviewIntent.current = resolveIdempotentIntent(reviewIntent.current, signature, JSON.stringify({ approve, expected_version: detail.version }));
+    reviewingEvidence.current = true;
     setWorking(true);
     try {
-      const result = await api<EvidenceReviewResult>(`/payment-evidence/${selectedEvidence.id}/review`, {
-        method: "POST",
-        body: JSON.stringify({ approve }),
+      const result = await api<EvidenceReviewResult>(`/payment-evidence/${selected.id}/review`, {
+        method: "POST", idempotencyKey: reviewIntent.current.key, body: reviewIntent.current.body,
       });
-      await refreshOrder(detail.id);
+      reviewIntent.current = null;
       if (!isCurrentSelection(detail)) return;
-      const approvalMessage = !result.notification
-        ? "Pago aprobado y pedido enviado a preparación. El aviso será procesado por WhatsApp."
-        : !result.notification.recipient_available
-          ? "Pago aprobado y pedido enviado a preparación. No existe un chat de WhatsApp asociado para avisar al cliente."
-          : result.notification.queued
-            ? "Pago aprobado, pedido enviado a preparación y aviso al cliente en cola."
-            : result.notification.acknowledged
-              ? "Pago aprobado y aviso entregado al canal de WhatsApp."
-              : "Pago aprobado y pedido enviado a preparación; el aviso quedó pendiente.";
-      setToast({ message: approve ? approvalMessage : "Comprobante rechazado y stock liberado.", tone: "success" });
+      const message = approve
+        ? request?.purpose === "delivery" ? "Pago del envío aprobado."
+          : request ? "Pago aprobado y adición enviada a cocina."
+            : "Pago aprobado y pedido enviado a preparación."
+        : request ? "Comprobante adicional rechazado. El pedido original se conserva."
+          : detail.payment_requests?.length ? "Comprobante original rechazado. Revisa las adiciones pendientes."
+            : "Comprobante rechazado y stock liberado.";
+      setToast({ message: message + (approve && result.notification?.queued ? " Aviso al cliente en cola." : ""), tone: "success" });
+      void refreshOrder(detail.id);
     } catch (caught) {
       if (!isCurrentSelection(detail)) return;
+      if (isDefinitiveClientError(caught)) reviewIntent.current = null;
       setToast({ message: caught instanceof Error ? caught.message : "No se pudo revisar el comprobante.", tone: "error" });
     } finally {
+      reviewingEvidence.current = false;
       if (isCurrentSelection(detail)) setWorking(false);
     }
   }
@@ -887,7 +875,7 @@ export function OrdersPage() {
           : detailError ? <ErrorState message={detailError} onRetry={() => void refreshDetail(selectedId)} />
             : detail?.id === selectedId && detail.branch_id === branch?.id && (historicalSelection
               ? <HistoricalOrderContent key={detail.id} order={detail} busy={working} onPrint={() => void printOrderDocument()} onPrintTicket={(ticket) => void printOrderDocument(ticket)} />
-              : <OrderDetailContent key={detail.id} order={detail} evidenceImage={evidenceImage} deliveryExpanded={deliveryExpanded} working={working} canEdit={canEditOrders} onEdit={() => setEditingOrder(detail)} onCopy={() => void copyOrder()} onEditTicket={openTicketEditor} onPrintTicket={(ticket) => void printOrderDocument(ticket)} onDeliveryToggle={() => setDeliveryExpanded((current) => !current)} onPrint={() => void printOrderDocument()} onPayment={openPayment} onAppend={() => setAppendProductsOpen(true)} onReview={reviewEvidence} onAdvance={() => void advance(detail)} onCancel={() => void cancelOrder(detail)} />)}
+              : <OrderDetailContent key={detail.id} order={detail} onRefresh={() => refreshOrder(detail.id)} deliveryExpanded={deliveryExpanded} working={working} canEdit={canEditOrders} onEdit={() => setEditingOrder(detail)} onCopy={() => void copyOrder()} onEditTicket={openTicketEditor} onPrintTicket={(ticket) => void printOrderDocument(ticket)} onDeliveryToggle={() => setDeliveryExpanded((current) => !current)} onPrint={() => void printOrderDocument()} onPayment={openPayment} onAppend={() => setAppendProductsOpen(true)} onReview={reviewEvidence} onAdvance={() => void advance(detail)} onCancel={() => void cancelOrder(detail)} />)}
       </Modal>}
 
       {cancelReasonOpen && detail && <Modal title="Cancelar pedido" className="order-cancel-modal" onClose={() => { if (!working && (!cancellationReason.trim() || window.confirm("¿Descartar el motivo y volver al pedido?"))) setCancelReasonOpen(false); }}><form className="form-stack" onSubmit={(event) => { event.preventDefault(); void cancelOrder(detail, cancellationReason); }}><p>El stock reservado será revertido y la acción quedará auditada. Los cobros confirmados no se anulan automáticamente.</p><label>Motivo de cancelación<textarea value={cancellationReason} maxLength={1000} required disabled={working} aria-describedby={cancelError ? "cancel-order-error" : undefined} onChange={(event) => setCancellationReason(event.target.value)} /></label>{cancelError && <p id="cancel-order-error" role="alert">{cancelError}</p>}<div className="modal-form-actions"><button className="button button-secondary" type="button" disabled={working} onClick={() => setCancelReasonOpen(false)}>Volver al pedido</button><button className="button button-primary" type="submit" disabled={working || !cancellationReason.trim()}>{working ? "Cancelando..." : "Confirmar cancelación"}</button></div></form></Modal>}

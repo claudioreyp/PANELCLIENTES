@@ -50,11 +50,11 @@ export function OrderListPanel({ items, total, reviewCount, page, pageSize, day,
           }}>
             <td><button className="order-row-open" type="button" aria-label={`Abrir pedido ${order.folio ?? "sin folio"} de ${order.customer_name || "cliente sin nombre"}`} onClick={(event) => { event.stopPropagation(); event.currentTarget.focus(); onOpen(order); }}><OrderIdentity {...order} mode="folio" />{order.status === "cancelled" && <small className="order-cancelled-label">Cancelado</small>}</button></td><td className="order-customer-name">{order.customer_name || (tableHistory ? "Sin nombre" : "Cliente de mostrador")}</td><td><OrderMode channel={order.channel} /></td>
             <td><time dateTime={order.created_at}>{dateLabel(order.created_at)}</time></td>
-            <td><OrderPaymentBadge status={orderPaymentDisplayStatus(order)} />{order.requires_review && <small className="review-flag">Requiere revisión</small>}</td><td>{amount(order.total)}</td>
+            <td><OrderPaymentBadge status={orderPaymentDisplayStatus(order)} />{order.requires_review && <small className="review-flag">Requiere revisión</small>}</td><td>{amount(order.total)}{order.delivery_fee_status === "pending_quote" && <small className="review-flag">Envío por cotizar</small>}</td>
           </tr>)}</tbody>
         </table></div>
         <div className="orders-mobile-cards">{items.map((order) => <button type="button" key={order.id} className={order.status === "cancelled" ? "order-row-cancelled" : ""} onClick={(event) => { event.currentTarget.focus(); onOpen(order); }} aria-label={`Abrir pedido ${order.folio ?? "sin folio"} de ${order.customer_name || "cliente sin nombre"}`}>
-          <span className="orders-mobile-top"><OrderIdentity {...order} mode="folio" /><span>{amount(order.total)}</span></span>
+          <span className="orders-mobile-top"><OrderIdentity {...order} mode="folio" /><span>{amount(order.total)}{order.delivery_fee_status === "pending_quote" && <small className="review-flag">Envío por cotizar</small>}</span></span>
           <span className="orders-mobile-customer"><b className="order-customer-name">{order.customer_name || (tableHistory ? "Sin nombre" : "Cliente de mostrador")}</b><time dateTime={order.created_at}>{dateLabel(order.created_at)}</time></span>
           <span className="orders-mobile-status"><OrderMode channel={order.channel} /><OrderPaymentBadge status={orderPaymentDisplayStatus(order)} />{order.status === "cancelled" && <small className="order-cancelled-label">Cancelado</small>}</span>
           {order.requires_review && <span className="review-flag">Requiere revisión</span>}

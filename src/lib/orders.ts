@@ -19,6 +19,7 @@ type WrappedOrderDetailApiResponse = {
   order: Order;
   payments?: OrderPayment[];
   payment_evidence?: PaymentEvidence[];
+  payment_requests?: OrderDetail["payment_requests"];
   tickets?: KitchenTicket[];
   payment_summary?: {
     paid?: number;
@@ -31,6 +32,7 @@ type LegacyOrderDetailApiResponse = Order & {
   cancellation_reason?: string | null;
   payments?: OrderPayment[];
   payment_evidence?: PaymentEvidence | PaymentEvidence[] | null;
+  payment_requests?: OrderDetail["payment_requests"];
   kitchen_tickets?: KitchenTicket[];
   tickets?: KitchenTicket[];
   paid_amount?: number;
@@ -218,6 +220,8 @@ export function normalizeOrderDetailResponse(response: OrderDetailApiResponse): 
     edit_policy: wrapped ? response.edit_policy : undefined,
     payments,
     payment_evidence: latestEvidence(evidence),
+    payment_evidences: evidence,
+    payment_requests: response.payment_requests || [],
     kitchen_tickets: orderedTickets(tickets),
     paid_amount: paidAmount,
     remaining_amount: remainingAmount,
@@ -246,6 +250,7 @@ export async function loadOrderDetail(orderId: number, branchId: number, require
     ...order,
     payments: [],
     payment_evidence: latestEvidence(evidence.filter((item) => item.order_id === order.id)),
+    payment_evidences: evidence.filter((item) => item.order_id === order.id),
     kitchen_tickets: orderedTickets(tickets.filter((ticket) => ticket.order_id === order.id)),
     paid_amount: order.payment_status === "paid" ? order.total : 0,
     remaining_amount: order.payment_status === "paid" ? 0 : order.total,
