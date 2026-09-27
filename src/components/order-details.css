@@ -63,6 +63,13 @@ section.modal-card.order-detail-modal { width: min(760px, 100%); height: auto; m
 .order-detail-modal .order-detail-tags > .order-channel { padding: 4px 9px; border: 1px solid #edd683; border-radius: 14px; background: #fffbea; color: #303030; font-size: .88rem; font-weight: 500; }
 .order-detail-modal .order-source { padding: 4px 10px; border-radius: 14px; background: #ededed; color: #5c5c5c; font-size: .88rem; font-weight: 500; }
 .order-detail-modal .order-detail-tags > .status-pill { text-transform: none; font-weight: 400; background: transparent; color: #767676; font-size: .78rem; padding: 0; }
+.order-agent-change-notice { display: flex; align-items: flex-start; gap: 12px; padding: 13px 15px; border: 1px solid #e6be73; border-radius: 9px; background: #fff8e8; color: #583d18; }
+.order-agent-change-notice > svg { width: 19px; height: 19px; margin-top: 2px; flex-shrink: 0; }
+.order-agent-change-notice > div { min-width: 0; }
+.order-agent-change-notice strong { display: block; font-size: .94rem; }
+.order-agent-change-notice time { display: block; margin-top: 2px; font-size: .8rem; }
+.order-agent-change-notice p { margin: 8px 0 3px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.order-agent-change-notice small { font-size: .82rem; }
 .order-detail-modal .order-detail-payments { padding: 0; border: 0; }
 .order-detail-modal .order-detail-payments > header { margin-top: 10px; margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid #e5e5e5; font-size: 1rem; font-weight: 400; }
 .order-detail-modal .order-detail-payments .status-pill { font-size: .88rem; font-weight: 500; text-transform: none; }

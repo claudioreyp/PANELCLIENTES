@@ -99,6 +99,7 @@ function toWorkspaceItem(order: Order): OrderWorkspaceItem {
     requires_review: ["evidence_received", "under_review"].includes(order.payment_status),
     item_count: order.items.filter(isActiveOrderItem).reduce((sum, item) => sum + item.quantity, 0),
     version: order.version,
+    recent_modification: order.recent_modification,
   };
 }
 

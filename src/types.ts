@@ -149,6 +149,12 @@ export type OrderItem = {
   promotion_snapshot?: Record<string, unknown> | null;
 };
 
+export type OrderRecentModification = {
+  at: string;
+  source: "agent";
+  summary: string;
+};
+
 export type Order = {
   id: number;
   business_id: number;
@@ -183,6 +189,7 @@ export type Order = {
   table_released_at?: string | null;
   closed_at?: string | null;
   created_at: string;
+  recent_modification?: OrderRecentModification | null;
   items: OrderItem[];
 };
 
@@ -204,6 +211,7 @@ export type OrderWorkspaceItem = {
   requires_review: boolean;
   item_count: number;
   version: number;
+  recent_modification?: OrderRecentModification | null;
 };
 
 export type OrderWorkspaceResponse = {
