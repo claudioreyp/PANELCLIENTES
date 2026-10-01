@@ -1,4 +1,4 @@
-import type { Catalog, KitchenTicket, Order, OrderDetail, OrderItem, OrderModifierSnapshot, ProductServiceChannel } from "../types";
+import type { Catalog, KitchenTicket, Order, OrderDetail, OrderItem, OrderModifierSnapshot, OrderRecentAgentAddition, ProductServiceChannel } from "../types";
 import { parsePosDate } from "./pos-dates";
 import type { OrderCartLine, OrderDraftChannel } from "./order-builder";
 import { calculatePromotions } from "./promotions";
@@ -15,6 +15,10 @@ export function orderServiceChannel(order: Pick<Order, "channel" | "source">): P
   return digital ? "digital_tables" : "pos_counter";
 }
 export const isActiveOrderItem = (item: OrderItem) => !["cancelled", "superseded"].includes(item.status);
+export function agentAdditionLabel(addition?: OrderRecentAgentAddition | null): string | null {
+  if (addition?.source !== "agent" || !Number.isInteger(addition.item_count) || addition.item_count <= 0) return null;
+  return addition.item_count === 1 ? "Producto agregado por el agente" : "Productos agregados por el agente";
+}
 export const CANCEL_ALL_ITEMS_MESSAGE = 'Para cancelar todos los productos, usa “Cancelar pedido” en el menú de tres puntos';
 export function orderIdentityText(order: { folio?: number | null; number?: string }) {
   return [order.folio != null ? `#${order.folio}` : null, order.number ? `#${order.number}` : null].filter(Boolean).join(" · ");

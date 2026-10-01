@@ -155,6 +155,13 @@ export type OrderRecentModification = {
   summary: string;
 };
 
+export type OrderRecentAgentAddition = {
+  at: string;
+  source: "agent";
+  item_count: number;
+  summary: string;
+};
+
 export type Order = {
   id: number;
   business_id: number;
@@ -190,6 +197,7 @@ export type Order = {
   closed_at?: string | null;
   created_at: string;
   recent_modification?: OrderRecentModification | null;
+  recent_agent_addition?: OrderRecentAgentAddition | null;
   items: OrderItem[];
 };
 
@@ -212,6 +220,7 @@ export type OrderWorkspaceItem = {
   item_count: number;
   version: number;
   recent_modification?: OrderRecentModification | null;
+  recent_agent_addition?: OrderRecentAgentAddition | null;
 };
 
 export type OrderWorkspaceResponse = {

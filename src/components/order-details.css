@@ -70,6 +70,7 @@ section.modal-card.order-detail-modal { width: min(760px, 100%); height: auto; m
 .order-agent-change-notice time { display: block; margin-top: 2px; font-size: .8rem; }
 .order-agent-change-notice p { margin: 8px 0 3px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .order-agent-change-notice small { font-size: .82rem; }
+.order-agent-addition-notice { border-color: #acd4b9; background: #f1faf4; color: #266543; }
 .order-detail-modal .order-detail-payments { padding: 0; border: 0; }
 .order-detail-modal .order-detail-payments > header { margin-top: 10px; margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid #e5e5e5; font-size: 1rem; font-weight: 400; }
 .order-detail-modal .order-detail-payments .status-pill { font-size: .88rem; font-weight: 500; text-transform: none; }

@@ -94,6 +94,7 @@ describe("orders workspace compatibility", () => {
         total: 30,
         version: 1,
         created_at: "2026-08-27T18:00:00-05:00",
+        recent_agent_addition: { at: "2026-08-27T18:05:00-05:00", source: "agent", item_count: 1, summary: "Agregó 1 × Pizza." },
         items: [{ id: 1, product_id: 2, name: "Pizza", quantity: 1, unit_price: 25, modifiers: [], status: "draft", line_total: 25 }],
       }]);
     const result = await loadOrdersWorkspace({
@@ -105,6 +106,7 @@ describe("orders workspace compatibility", () => {
       timezone: "America/Lima",
     });
     expect(result.items[0]).toMatchObject({ id: 8, item_count: 1, total: 30 });
+    expect(result.items[0].recent_agent_addition).toEqual({ at: "2026-08-27T18:05:00-05:00", source: "agent", item_count: 1, summary: "Agregó 1 × Pizza." });
     expect(apiMock).toHaveBeenCalledTimes(2);
   });
 });
@@ -126,6 +128,7 @@ describe("order detail normalization", () => {
       total: 30,
       version: 2,
       created_at: "2026-08-27T18:00:00-05:00",
+      recent_agent_addition: { at: "2026-08-27T18:05:00-05:00", source: "agent" as const, item_count: 1, summary: "Agregó 1 × Pizza." },
       items: [],
     };
     const evidence = (id: number, createdAt: string) => ({
@@ -159,6 +162,7 @@ describe("order detail normalization", () => {
     expect(result.payment_evidence?.id).toBe(2);
     expect(result.kitchen_tickets.map((item) => item.sequence)).toEqual([1, 2]);
     expect(result).toMatchObject({ paid_amount: 10, remaining_amount: 20 });
+    expect(result.recent_agent_addition).toEqual(order.recent_agent_addition);
   });
 
   it("normalizes the legacy flat detail response without losing its selected evidence", () => {

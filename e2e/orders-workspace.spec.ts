@@ -436,6 +436,51 @@ async function addPersonalPizzaToNewOrder(page: Page) {
   return drawer;
 }
 
+test("agent additions show the confirmed list notice and a separate attributed command", async ({ page }, testInfo) => {
+  const mock = await mockOrdersApi(page, { editable: true });
+  const detail = mock.details.get(8)!;
+  const addition = { at: "2026-10-01T23:35:00Z", source: "agent", item_count: 1, summary: "Agregó 1 × Agua sin gas." };
+  const pizza = { id: 91, product_id: 20, name: "Pizza Americana", variant_name: "Personal", quantity: 1, unit_price: 15, line_total: 15, modifiers: [], status: "sent" };
+  const water = { id: 92, product_id: 21, name: "Agua", variant_name: "sin gas", quantity: 1, unit_price: 2, line_total: 2, modifiers: [], status: "sent" };
+  Object.assign(detail.order, {
+    channel: "counter", source: "pos", customer_name: "Cliente de prueba", status: "sent_to_kitchen", payment_status: "partial",
+    subtotal: 17, discount: 0, delivery_fee: 0, total: 17, notes: null, delivery_address: null,
+    recent_agent_addition: addition, created_at: "2026-10-01T23:30:00Z", items: [pizza, water],
+  });
+  Object.assign(detail, {
+    payments: [{ id: 60, order_id: 8, method: "cash", amount: 15, status: "confirmed", created_at: detail.order.created_at }],
+    payment_evidence: [], payment_summary: { paid: 15, remaining: 2 },
+    tickets: [
+      { id: 81, order_id: 8, sequence: 1, station: "kitchen", status: "ready", created_by_name: "AlonsoRey", created_at: detail.order.created_at, print_count: 0, items: [{ ...pizza, item_id: 91 }] },
+      { id: 82, order_id: 8, sequence: 2, station: "kitchen", status: "queued", created_by_name: "Agente de WhatsApp", created_at: addition.at, print_count: 0, kind: "addition", items: [{ ...water, item_id: 92 }] },
+    ],
+  });
+  Object.assign(mock.orders[0], detail.order, { item_count: 2, requires_review: false });
+  const writes: string[] = [];
+  await page.route("**/api/v1/**", (route) => {
+    if (route.request().method() === "GET") return route.fallback();
+    writes.push(`${route.request().method()} ${new URL(route.request().url()).pathname}`);
+    return json(route, { detail: "Sólo lectura en la verificación" }, 405);
+  });
+  await page.goto("/pedidos");
+  await expect(page.getByText("Producto agregado por el agente", { exact: true }).filter({ visible: true })).toBeVisible();
+  await expect(page.getByText("17 S/", { exact: true }).filter({ visible: true })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("agent-addition-list.png"), fullPage: true, animations: "disabled" });
+  await page.getByRole("button", { name: "Abrir pedido 7 de Cliente de prueba" }).filter({ visible: true }).click();
+  const dialog = page.getByRole("dialog", { name: /Pedido #7/ });
+  await expect(dialog.getByRole("region", { name: "Productos agregados por el agente" })).toContainText(addition.summary);
+  await dialog.getByRole("button", { name: /Comanda #1/ }).click();
+  await dialog.getByRole("button", { name: /Comanda #2/ }).click();
+  await expect(dialog.getByText("Por AlonsoRey", { exact: false })).toBeVisible();
+  await expect(dialog.getByText("Por Agente de WhatsApp", { exact: false })).toBeVisible();
+  await expect(dialog.getByText("1 × Agua - sin gas", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("Preparado", { exact: true })).toHaveCount(1);
+  await expect(dialog.getByText("Monto restante").locator("..")).toContainText("2 S/");
+  await page.screenshot({ path: testInfo.outputPath("agent-addition-detail.png"), fullPage: true, animations: "disabled" });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  expect(writes).toEqual([]);
+});
+
 test("WhatsApp quoted shipping saves independently and never dispatches an undefined fee", async ({ page }, testInfo) => {
   const mock = await mockOrdersApi(page);
   const detail = mock.details.get(8)!;
