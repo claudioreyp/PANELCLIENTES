@@ -74,11 +74,11 @@ describe("independent receipts", () => {
     const onReview = vi.fn().mockResolvedValue(undefined);
     const view = render(<OrderEvidenceHistory order={proofOrder} working={false} onReview={onReview} />);
     const extraCard = screen.getByRole("region", { name: "Comprobante: Productos adicionales" });
-    expect(within(extraCard).getByRole("button", { name: "Aprobar pago y preparar adición" })).toBeDisabled();
+    expect(within(extraCard).getByRole("button", { name: "Aprobar pago y agregar productos" })).toBeDisabled();
     fireEvent.click(within(extraCard).getByRole("button", { name: "Rechazar comprobante" }));
     expect(onReview).toHaveBeenCalledWith(false, extra);
     view.rerender(<OrderEvidenceHistory order={{ ...proofOrder, payment_evidences: [{ ...evidence, status: "paid" }, extra] }} working={false} onReview={onReview} />);
-    await waitFor(() => expect(screen.getByRole("button", { name: "Aprobar pago y preparar adición" })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Aprobar pago y agregar productos" })).toBeEnabled());
     expect(screen.getByText("012")).toBeVisible();
     expect(screen.getByText("456")).toBeVisible();
   });

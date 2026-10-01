@@ -38,7 +38,7 @@ function EvidenceCard({ evidence, request, working, mayReview, initialPaid, onRe
       {evidence.rejection_reason && <p>{evidence.rejection_reason}</p>}
       {request && !initialPaid && reviewable && <p>Primero aprueba el comprobante del pedido original.</p>}
       {mayReview && reviewable && <div className="review-actions">
-        <button type="button" className="button button-success" disabled={working || Boolean(request && !initialPaid)} onClick={() => void onReview(true, evidence)}><CheckCircle2 />{request?.purpose === "delivery" ? "Aprobar pago del envío" : request ? "Aprobar pago y preparar adición" : "Aprobar pago y preparar"}</button>
+        <button type="button" className="button button-success" disabled={working || Boolean(request && !initialPaid)} onClick={() => void onReview(true, evidence)}><CheckCircle2 />{request?.purpose === "delivery" ? "Aprobar pago del envío" : request ? "Aprobar pago y agregar productos" : "Aprobar pago y preparar"}</button>
         <button type="button" className="button button-danger" disabled={working} onClick={() => void onReview(false, evidence)}><XCircle /> Rechazar comprobante</button>
       </div>}
     </div>

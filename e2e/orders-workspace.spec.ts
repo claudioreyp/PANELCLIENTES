@@ -532,7 +532,7 @@ test("WhatsApp initial and additional receipts are separate and approval order i
   const addition = page.getByRole("region", { name: "Comprobante: Productos adicionales" });
   await expect(initial.getByText("111", { exact: true })).toBeVisible();
   await expect(addition.getByText("742", { exact: true })).toBeVisible();
-  await expect(addition.getByRole("button", { name: "Aprobar pago y preparar adición" })).toBeDisabled();
+  await expect(addition.getByRole("button", { name: "Aprobar pago y agregar productos" })).toBeDisabled();
   await expect(initial.getByRole("button", { name: "Aprobar pago y preparar", exact: true })).toBeEnabled();
   await expect(page.getByRole("button", { name: "Cerrar operación" })).toHaveCount(0);
   await addition.scrollIntoViewIfNeeded();
