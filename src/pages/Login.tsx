@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { ArrowRight, ChefHat, LockKeyhole, Sparkles } from "lucide-react";
+import { ArrowRight, LockKeyhole, Sparkles } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 
@@ -33,7 +33,7 @@ export function LoginPage() {
   return (
     <main className="login-page">
       <section className="login-story">
-        <div className="login-brand"><ChefHat /><span>Escalar AI POS</span></div>
+        <div className="login-brand"><img src="/brand/escalar-wordmark-v1.png" alt="Escalar AI POS" width={240} height={80} /></div>
         <div className="login-copy">
           <span className="eyebrow light"><Sparkles size={14} /> Operación conectada</span>
           <h1>Del pedido a cocina, sin perder el ritmo.</h1>

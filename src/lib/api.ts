@@ -47,7 +47,17 @@ function errorDescriptor(body: unknown, status: number): ApiErrorDescriptor {
 function humanizeApiError(body: unknown, status: number): ApiErrorDescriptor {
   const descriptor = errorDescriptor(body, status);
   const normalizedCode = descriptor.code?.trim().toUpperCase();
+  const tableMessages: Record<string, string> = {
+    AREA_TABLES_CHANGED: "Las mesas de esta zona cambiaron. Actualiza la lista antes de borrarla.",
+    AREA_HAS_ACTIVE_TABLES: "La zona todavía contiene mesas activas. Confirma también su retirada del plano.",
+    TABLE_HAS_ACTIVE_ORDER: "Esta mesa tiene una cuenta abierta. Ciérrala antes de borrarla.",
+    TABLE_HAS_ACTIVE_RESERVATION: "Esta mesa tiene una reserva vigente o futura. Resuélvela antes de borrarla.",
+    TABLE_ARCHIVED: "Esta mesa ya fue retirada del plano. Actualiza la lista y selecciona otra.",
+    TABLE_ALREADY_RELEASED: "Esta cuenta ya liberó la mesa. Actualiza el pedido para ver su estado actual.",
+    ARCHIVE_IDEMPOTENCY_CONFLICT: "El borrado pendiente tiene otros datos. Comprueba su resultado antes de repetirlo.",
+  };
   if (status === 401) return { message: "Tu sesión expiró. Vuelve a ingresar", code: normalizedCode };
+  if (normalizedCode && tableMessages[normalizedCode]) return { message: tableMessages[normalizedCode], code: normalizedCode };
   if (normalizedCode === "CATEGORY_LAST_VISIBLE_PRODUCTS") {
     return {
       code: normalizedCode,

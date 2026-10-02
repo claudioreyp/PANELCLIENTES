@@ -306,6 +306,8 @@ export type RestaurantTable = {
   status: "available" | "reserved" | "occupied" | "cleaning";
   version: number;
   active_order_id?: number | null;
+  archived_at?: string | null;
+  active?: boolean;
 };
 
 export type KitchenTicket = {

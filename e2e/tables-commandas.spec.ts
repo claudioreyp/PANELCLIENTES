@@ -177,6 +177,8 @@ async function mockTablesAndCommandasApi(page: Page, options: { seedArea?: boole
   const orderTransitionPayloads: Record<string, unknown>[] = [];
   const orderTransferPayloads: Record<string, unknown>[] = [];
   const tableCreatePayloads: Record<string, unknown>[] = [];
+  const tableArchiveRequests: { id: number; body: Record<string, unknown>; key: string | undefined }[] = [];
+  const areaArchiveRequests: { id: number; body: Record<string, unknown>; key: string | undefined }[] = [];
   let createdOrderPayload: Record<string, unknown> | null = null;
   let confirmSendCount = 0;
   let tableOrderVersion = 1;
@@ -625,6 +627,22 @@ async function mockTablesAndCommandasApi(page: Page, options: { seedArea?: boole
     }
 
     const areaMatch = path.match(/^\/areas\/(\d+)$/);
+    if (method === "DELETE" && areaMatch) {
+      const index = areas.findIndex((item) => item.id === Number(areaMatch[1]));
+      if (index < 0) return json(route, { detail: "Zona no encontrada" }, 404);
+      const area = areas[index];
+      const payload = request.postDataJSON() as Record<string, unknown>;
+      const members = tables.filter((table) => table.area_id === area.id);
+      const expectedTables = members.map((table) => ({ id: table.id, expected_version: table.version }));
+      if (payload.expected_version !== area.version || payload.include_tables !== true || JSON.stringify(payload.tables) !== JSON.stringify(expectedTables)) return json(route, { detail: "La zona o sus mesas cambiaron" }, 409);
+      if (members.some((table) => table.active_order_id || ["occupied", "reserved"].includes(table.status))) return json(route, { detail: "La zona tiene cuentas abiertas o reservas" }, 409);
+      areaArchiveRequests.push({ id: area.id, body: payload, key: request.headers()["idempotency-key"] });
+      areas.splice(index, 1);
+      for (let tableIndex = tables.length - 1; tableIndex >= 0; tableIndex--) {
+        if (tables[tableIndex].area_id === area.id) tables.splice(tableIndex, 1);
+      }
+      return json(route, { ...area, active: false, archived_at: new Date().toISOString(), archived_table_ids: members.map((table) => table.id), version: area.version + 1 });
+    }
     if (method === "PATCH" && areaMatch) {
       const area = areas.find((item) => item.id === Number(areaMatch[1]));
       if (!area) return json(route, { detail: "Zona no encontrada" }, 404);
@@ -652,6 +670,17 @@ async function mockTablesAndCommandasApi(page: Page, options: { seedArea?: boole
     }
 
     const tableMatch = path.match(/^\/tables\/(\d+)$/);
+    if (method === "DELETE" && tableMatch) {
+      const index = tables.findIndex((item) => item.id === Number(tableMatch[1]));
+      if (index < 0) return json(route, { detail: "Mesa no encontrada" }, 404);
+      const table = tables[index];
+      const payload = request.postDataJSON() as Record<string, unknown>;
+      if (payload.expected_version !== table.version) return json(route, { detail: "La mesa cambió" }, 409);
+      if (table.active_order_id || ["occupied", "reserved"].includes(table.status)) return json(route, { detail: "La mesa tiene una cuenta abierta o reserva" }, 409);
+      tableArchiveRequests.push({ id: table.id, body: payload, key: request.headers()["idempotency-key"] });
+      tables.splice(index, 1);
+      return json(route, { ...table, active: false, archived_at: new Date().toISOString(), version: table.version + 1 });
+    }
     if (method === "PATCH" && tableMatch) {
       const table = tables.find((item) => item.id === Number(tableMatch[1]));
       if (!table) return json(route, { detail: "Mesa no encontrada" }, 404);
@@ -726,6 +755,8 @@ async function mockTablesAndCommandasApi(page: Page, options: { seedArea?: boole
     areas,
     tables,
     tableCreatePayloads,
+    tableArchiveRequests,
+    areaArchiveRequests,
     transitionStatuses,
     transitionExpectedStatuses,
     commandActions,
@@ -996,6 +1027,127 @@ test("configures the first table inline from the responsive tables workspace", a
     shape: "rectangle",
     width: changedWidth,
   });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
+});
+
+test("keeps deleting a persisted table in the draft until Save and preserves it when leaving", async ({ page }, testInfo) => {
+  const mock = await mockTablesAndCommandasApi(page, { seedTable: true });
+  await page.goto("/pedidos");
+  await activateOrdersTab(page, "Panel de mesas");
+  await page.getByRole("button", { name: "Editar sala", exact: true }).click();
+  const editor = page.getByRole("dialog", { name: "Sala principal", exact: true });
+  const selectedTable = editor.getByRole("button", { name: "Editar Mesa 1", exact: true });
+  await selectedTable.click();
+  await expect(editor.getByRole("button", { name: "Borrar mesa", exact: true })).toBeEnabled();
+  await editor.getByRole("button", { name: "Borrar mesa", exact: true }).scrollIntoViewIfNeeded();
+  if (process.env.IMPECCABLE_REVIEW === "1") {
+    await page.screenshot({ path: `.impeccable/review/table-delete-controls-${testInfo.project.name}.png`, animations: "disabled" });
+  }
+  page.once("dialog", async (dialog) => {
+    expect(dialog.message()).toContain("El cambio se aplicará al Guardar");
+    await dialog.accept();
+  });
+  await editor.getByRole("button", { name: "Borrar mesa", exact: true }).click();
+  await expect(selectedTable).toHaveCount(0);
+  expect(mock.tableArchiveRequests).toHaveLength(0);
+  expect(mock.tables).toHaveLength(1);
+  if (process.env.IMPECCABLE_REVIEW === "1") {
+    await page.screenshot({ path: `.impeccable/review/table-delete-draft-${testInfo.project.name}.png`, animations: "disabled" });
+  }
+  page.once("dialog", async (dialog) => {
+    expect(dialog.message()).toBe("¿Salir sin guardar los cambios de la zona?");
+    await dialog.accept();
+  });
+  await editor.getByRole("button", { name: "Salir", exact: true }).click();
+  await expect(editor).toBeHidden();
+  await expect(page.locator(".tables-workspace button:visible").filter({ hasText: "Mesa 1" }).first()).toBeVisible();
+  expect(mock.tables).toHaveLength(1);
+  expect(mock.tableArchiveRequests).toHaveLength(0);
+
+  await page.getByRole("button", { name: "Editar sala", exact: true }).click();
+  await selectedTable.click();
+  page.once("dialog", async (dialog) => { await dialog.accept(); });
+  await editor.getByRole("button", { name: "Borrar mesa", exact: true }).click();
+  await editor.locator(".zone-editor-header").getByRole("button", { name: "Guardar", exact: true }).click();
+  await expect(editor).toBeHidden();
+  await expect(page.getByRole("button", { name: "Agregar mesas", exact: true })).toBeVisible();
+  expect(mock.tables).toHaveLength(0);
+  expect(mock.areas).toHaveLength(2);
+  expect(mock.tableArchiveRequests).toEqual([{ id: 101, body: { expected_version: 1 }, key: expect.any(String) }]);
+  expect(mock.areaArchiveRequests).toHaveLength(0);
+  expect(await tablePrintSubmissions(page)).toHaveLength(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
+});
+
+test("shows the zone name and table count before archiving a zone with free tables", async ({ page }, testInfo) => {
+  const mock = await mockTablesAndCommandasApi(page, { seedTable: true, seedTransferTable: true });
+  await page.goto("/configuracion/zonas");
+  const row = page.locator(".settings-resource-row").filter({ has: page.getByRole("button", { name: "Editar zona Sala principal", exact: true }) });
+  await expect(row.getByText("2 mesas", { exact: true })).toBeVisible();
+  await row.getByRole("button", { name: "Abrir acciones", exact: true }).click();
+  await row.getByRole("menuitem", { name: "Borrar", exact: true }).click();
+  const confirmation = page.getByRole("alertdialog", { name: "Archivar zona", exact: true });
+  await expect(confirmation).toContainText("Se quitarán la zona Sala principal y sus 2 mesas del plano.");
+  await expect(confirmation).toContainText("Su historial se conservará.");
+  expect(mock.areaArchiveRequests).toHaveLength(0);
+  if (process.env.IMPECCABLE_REVIEW === "1") {
+    await page.screenshot({ path: `.impeccable/review/zone-delete-confirmation-${testInfo.project.name}.png`, animations: "disabled" });
+  }
+  await confirmation.getByRole("button", { name: "Seguir editando", exact: true }).click();
+  await expect(confirmation).toBeHidden();
+  expect(mock.tables).toHaveLength(2);
+  expect(mock.areas).toHaveLength(2);
+  expect(mock.areaArchiveRequests).toHaveLength(0);
+  await row.getByRole("button", { name: "Abrir acciones", exact: true }).click();
+  await row.getByRole("menuitem", { name: "Borrar", exact: true }).click();
+  await confirmation.getByRole("button", { name: "Archivar zona", exact: true }).click();
+  await expect(confirmation).toBeHidden();
+  await expect(page.getByRole("button", { name: "Editar zona Sala principal", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Editar zona Pabellón", exact: true })).toBeVisible();
+  expect(mock.tables).toHaveLength(0);
+  expect(mock.areas.map((area) => area.name)).toEqual(["Pabellón"]);
+  expect(mock.areaArchiveRequests).toEqual([{
+    id: 51, body: { expected_version: 1, include_tables: true, tables: [{ id: 101, expected_version: 1 }, { id: 102, expected_version: 1 }] }, key: expect.any(String),
+  }]);
+  expect(mock.tableArchiveRequests).toHaveLength(0);
+  expect(await tablePrintSubmissions(page)).toHaveLength(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
+});
+
+test("keeps the Escalar brand visible in the sidebar, app download and access screens", async ({ page }, testInfo) => {
+  await mockTablesAndCommandasApi(page);
+  await page.goto("/pedidos");
+  const openMenu = page.getByRole("button", { name: "Abrir menú", exact: true });
+  const compact = await openMenu.isVisible();
+  if (compact) await openMenu.click();
+  if (compact) await expect.poll(async () => Math.round((await page.locator(".sidebar").boundingBox())?.x ?? -1)).toBe(0);
+  const symbol = page.locator(".brand-mark img");
+  await expect(symbol).toBeVisible();
+  await expect(symbol).toHaveAttribute("src", "/icons/escalar-icon-v1-192.png");
+  await expect.poll(() => symbol.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBe(192);
+  await expect(page.locator(".brand-block")).toContainText("Pizza House");
+  if (process.env.IMPECCABLE_REVIEW === "1") {
+    await page.screenshot({ path: `.impeccable/review/escalar-sidebar-${testInfo.project.name}.png`, animations: "disabled" });
+  }
+  if (compact) await page.locator(".sidebar").getByRole("button", { name: "Cerrar menú", exact: true }).click();
+  await page.getByRole("link", { name: "Instalar app", exact: true }).click();
+  const downloadBrand = page.getByRole("img", { name: "Escalar AI", exact: true });
+  await expect(downloadBrand).toBeVisible();
+  await expect(downloadBrand).toHaveAttribute("src", "/brand/escalar-wordmark-v1.png");
+  await expect.poll(() => downloadBrand.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBe(2172);
+  if (process.env.IMPECCABLE_REVIEW === "1") {
+    await page.screenshot({ path: `.impeccable/review/escalar-download-${testInfo.project.name}.png`, fullPage: true, animations: "disabled" });
+  }
+  if (compact) await openMenu.click();
+  await page.locator(".sidebar").getByRole("button", { name: "Salir", exact: true }).click();
+  const accessBrand = page.getByRole("img", { name: "Escalar AI POS", exact: true });
+  await expect(accessBrand).toBeVisible();
+  await expect(accessBrand).toHaveAttribute("src", "/brand/escalar-wordmark-v1.png");
+  await expect.poll(() => accessBrand.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBe(2172);
+  await expect(page.getByRole("heading", { name: "Bienvenido de vuelta", exact: true })).toBeVisible();
+  if (process.env.IMPECCABLE_REVIEW === "1") {
+    await page.screenshot({ path: `.impeccable/review/escalar-access-${testInfo.project.name}.png`, fullPage: true, animations: "disabled" });
+  }
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
 });
 

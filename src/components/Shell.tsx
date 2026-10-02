@@ -11,7 +11,6 @@ import {
   Menu,
   PackageOpen,
   Settings,
-  Store,
   X,
 } from "lucide-react";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
@@ -77,7 +76,7 @@ export function Shell({ children }: { children: ReactNode }) {
     <div className="app-shell">
       <aside ref={sidebarRef} id={sidebarId} className={`sidebar ${mobileMenuOpen ? "sidebar-open" : ""}`} inert={isMobile && !mobileMenuOpen} aria-hidden={isMobile && !mobileMenuOpen ? true : undefined} role={mobileMenuOpen ? "dialog" : undefined} aria-modal={mobileMenuOpen ? true : undefined} aria-label={mobileMenuOpen ? "Menú principal" : undefined} tabIndex={-1}>
         <div className="brand-block">
-          <div className="brand-mark"><Store /></div>
+          <div className="brand-mark"><img src="/icons/escalar-icon-v1-192.png" alt="" width={32} height={32} /></div>
           <div><strong>Escalar AI POS</strong><span>{context?.business.name || "Restaurante"}</span></div>
           <button className="icon-button sidebar-close" data-dialog-initial-focus aria-label="Cerrar menú" onClick={() => setMenuOpen(false)}><X /></button>
         </div>

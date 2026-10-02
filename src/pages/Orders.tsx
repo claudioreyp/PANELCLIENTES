@@ -41,7 +41,7 @@ import type { Catalog, KitchenTicket, Order, OrderDetail, OrderItemsMutationResp
 
 type ToastState = { message: string; tone: "success" | "error" } | null;
 type OrdersTab = "orders" | "tables" | "commands";
-type CheckoutResponse = Partial<Order> & { order?: Partial<Order> };
+type CheckoutResponse = Partial<Order> & { order?: Partial<Order>; table?: RestaurantTable | null };
 function isDefinitiveClientError(value: unknown) {
   if (!value || typeof value !== "object" || !("status" in value)) return false;
   const status = Number((value as { status?: unknown }).status);
@@ -413,7 +413,9 @@ export function OrdersPage() {
       || (saved.id != null && saved.id !== target.id)
       || (saved.branch_id != null && saved.branch_id !== target.branch_id)) return false;
     const newerRead = saved.version != null && current.version > saved.version;
-    const updated = newerRead ? current : { ...current, ...saved, remaining_amount: Math.max(0, (saved.total ?? current.total) - current.paid_amount) };
+    const summary = saved as Partial<OrderDetail>;
+    const paid = summary.paid_amount ?? current.paid_amount;
+    const updated = newerRead ? current : { ...current, ...saved, paid_amount: paid, remaining_amount: summary.remaining_amount ?? Math.max(0, (saved.total ?? current.total) - paid) };
     detailRequest.current += 1;
     detailRef.current = updated;
     setDetail(updated);
@@ -429,24 +431,58 @@ export function OrdersPage() {
     if (!detail || !isCurrentSelection(detail) || working) return;
     setWorking(true);
     try {
-      const body = JSON.stringify({ expected_version: detail.version });
-      checkoutIntent.current = resolveIdempotentIntent(checkoutIntent.current, `${detail.id}:table-checkout:start:${detail.version}`, body);
-      const response = await api<CheckoutResponse>(`/orders/${detail.id}/table-checkout/start`, {
-        method: "POST",
-        idempotencyKey: checkoutIntent.current.key,
-        body: checkoutIntent.current.body,
-      });
-      if (!applyCheckoutResponse(response, detail, true)) return;
-      checkoutIntent.current = null;
+      const prepared = await prepareTableCheckout(detail);
+      if (!isCurrentSelection(detail)) return;
+      if (prepared.remaining_amount <= 0) {
+        await payAndReleaseTable(prepared, []);
+        return;
+      }
       setToast({ message: "Mesa cerrada para cobro.", tone: "success" });
       void refreshOrder(detail.id);
     } catch (caught) {
       if (!isCurrentSelection(detail)) return;
-      if (isDefinitiveClientError(caught)) checkoutIntent.current = null;
+      if (isDefinitiveClientError(caught)) { checkoutIntent.current = null; tablePaymentIntent.current = null; }
       setToast({ message: caught instanceof Error ? caught.message : "No se pudo cerrar la mesa.", tone: "error" });
     } finally {
       if (isCurrentSelection(detail)) setWorking(false);
     }
+  }
+
+  async function prepareTableCheckout(target: OrderDetail): Promise<OrderDetail> {
+    if (target.checkout_started_at) return target;
+    const body = JSON.stringify({ expected_version: target.version });
+    checkoutIntent.current = resolveIdempotentIntent(checkoutIntent.current, `${target.id}:table-checkout:start:${target.version}`, body);
+    const response = await api<CheckoutResponse>(`/orders/${target.id}/table-checkout/start`, {
+      method: "POST", idempotencyKey: checkoutIntent.current.key, body: checkoutIntent.current.body,
+    });
+    const saved = response.order || response;
+    if (saved.version == null || !saved.checkout_started_at || (saved.id != null && saved.id !== target.id) || (saved.branch_id != null && saved.branch_id !== target.branch_id)) throw new Error("No se pudo comprobar el cierre de esta cuenta. Actualiza el pedido antes de cobrar.");
+    if (!applyCheckoutResponse(response, target, true)) throw new Error("El pedido cambió mientras cerrábamos la cuenta. Actualízalo antes de cobrar.");
+    checkoutIntent.current = null;
+    if (detailRef.current && detailRef.current.version > saved.version) throw new Error("El saldo de la mesa cambió mientras cerrábamos la cuenta. Revisa el importe actualizado antes de cobrar.");
+    const summary = saved as Partial<OrderDetail>;
+    const paid = summary.paid_amount ?? target.paid_amount;
+    return { ...target, ...saved, paid_amount: paid, remaining_amount: summary.remaining_amount ?? Math.max(0, (saved.total ?? target.total) - paid) };
+  }
+
+  async function payAndReleaseTable(target: OrderDetail, payments: { method: string; amount: number; cash_session_id: number | null; note: string | null }[]) {
+    const body = JSON.stringify({ expected_version: target.version, payments });
+    tablePaymentIntent.current = resolveIdempotentIntent(tablePaymentIntent.current, `${target.id}:table-checkout:pay:${body}`, body);
+    const result = await api<CheckoutResponse>(`/orders/${target.id}/table-checkout/pay`, {
+      method: "POST", idempotencyKey: tablePaymentIntent.current.key, body: tablePaymentIntent.current.body,
+    });
+    if (!isCurrentSelection(target)) return;
+    const saved = result.order || result;
+    if (!saved.table_released_at || (saved.id != null && saved.id !== target.id) || (saved.branch_id != null && saved.branch_id !== target.branch_id)) throw new Error("No se pudo comprobar la liberación de esta mesa. Actualiza el pedido antes de reintentar.");
+    tablePaymentIntent.current = null;
+    setWorking(false);
+    setPaymentOpen(false);
+    setSelectedId(null);
+    setSelectedTable(null);
+    setTableCheckoutMode(false);
+    setDetail(null);
+    void workspace.refresh();
+    setToast({ message: result.table?.status === "occupied" ? "Cuenta cerrada. La mesa conserva su otra cuenta abierta." : payments.length ? "Mesa cobrada y liberada. Cocina continuará con las comandas pendientes." : "Mesa liberada. Se conservaron los pagos ya registrados.", tone: "success" });
   }
 
   async function reopenTableCheckout() {
@@ -563,11 +599,24 @@ export function OrdersPage() {
   async function createPayment(selection: NewOrderCheckoutSelection) {
     if (!detail || !isCurrentSelection(detail) || selection.deferPayment || working) return;
     const orderId = detail.id;
-    const isTablePayment = Boolean(selectedTable && tableCheckoutMode);
+    const isTablePayment = detail.channel === "dine_in" && Boolean(detail.table_id) && !detail.table_released_at;
     const shouldSendToKitchen = ["draft", "pending_confirmation"].includes(detail.status);
     setWorking(true);
     try {
       if (isTablePayment) {
+        let target = detail;
+        if (shouldSendToKitchen) {
+          const body = JSON.stringify({ expected_version: target.version });
+          confirmIntent.current = resolveIdempotentIntent(confirmIntent.current, `${orderId}:confirm`, body);
+          const result = await api<CheckoutResponse>(`/orders/${orderId}/confirm-and-send`, { method: "POST", idempotencyKey: confirmIntent.current.key, body: confirmIntent.current.body });
+          if (!isCurrentSelection(detail)) return;
+          const saved = result.order || result;
+          if (saved.version == null || (saved.id != null && saved.id !== detail.id) || (saved.branch_id != null && saved.branch_id !== detail.branch_id)) throw new Error("Actualiza este pedido para comprobar el envío a cocina antes de cobrar.");
+          target = { ...target, ...saved };
+          confirmIntent.current = null;
+        }
+        target = await prepareTableCheckout(target);
+        if (!isCurrentSelection(detail)) return;
         const payments = selection.plan.payments.map((payment) => ({
           method: payment.method,
           amount: payment.amount,
@@ -576,24 +625,8 @@ export function OrdersPage() {
             ? `Efectivo recibido: ${payment.cashReceived.toFixed(2)} PEN. Cambio: ${selection.plan.change.toFixed(2)} PEN.`
             : null,
         }));
-        const body = JSON.stringify({ expected_version: detail.version, payments });
-        const signature = `${orderId}:table-checkout:pay:${body}`;
-        tablePaymentIntent.current = resolveIdempotentIntent(tablePaymentIntent.current, signature, body);
-        await api(`/orders/${orderId}/table-checkout/pay`, {
-          method: "POST",
-          idempotencyKey: tablePaymentIntent.current.key,
-          body: tablePaymentIntent.current.body,
-        });
-        if (!isCurrentSelection(detail)) return;
-        tablePaymentIntent.current = null;
-        setWorking(false);
-        setPaymentOpen(false);
-        setSelectedId(null);
-        setSelectedTable(null);
-        setTableCheckoutMode(false);
-        setDetail(null);
-        void workspace.refresh();
-        setToast({ message: "Mesa cobrada y liberada. Cocina continuará con las comandas pendientes.", tone: "success" });
+        await payAndReleaseTable(target, payments);
+        if (isCurrentSelection(detail)) setWorking(false);
         return;
       }
 
@@ -646,7 +679,7 @@ export function OrdersPage() {
       if (isDefinitiveClientError(caught)) {
         paymentIntents.current.clear();
         confirmIntent.current = null;
-        if (isTablePayment) tablePaymentIntent.current = null;
+        if (isTablePayment) { tablePaymentIntent.current = null; checkoutIntent.current = null; }
       }
       setPaymentOpen(false);
       await refreshOrder(orderId);
@@ -875,7 +908,7 @@ export function OrdersPage() {
           : detailError ? <ErrorState message={detailError} onRetry={() => void refreshDetail(selectedId)} />
             : detail?.id === selectedId && detail.branch_id === branch?.id && (historicalSelection
               ? <HistoricalOrderContent key={detail.id} order={detail} busy={working} onPrint={() => void printOrderDocument()} onPrintTicket={(ticket) => void printOrderDocument(ticket)} />
-              : <OrderDetailContent key={detail.id} order={detail} onRefresh={() => refreshOrder(detail.id)} deliveryExpanded={deliveryExpanded} working={working} canEdit={canEditOrders} onEdit={() => setEditingOrder(detail)} onCopy={() => void copyOrder()} onEditTicket={openTicketEditor} onPrintTicket={(ticket) => void printOrderDocument(ticket)} onDeliveryToggle={() => setDeliveryExpanded((current) => !current)} onPrint={() => void printOrderDocument()} onPayment={openPayment} onAppend={() => setAppendProductsOpen(true)} onReview={reviewEvidence} onAdvance={() => void advance(detail)} onCancel={() => void cancelOrder(detail)} />)}
+              : <OrderDetailContent key={detail.id} order={detail} onRefresh={() => refreshOrder(detail.id)} deliveryExpanded={deliveryExpanded} working={working} canEdit={canEditOrders} onEdit={() => setEditingOrder(detail)} onCopy={() => void copyOrder()} onEditTicket={openTicketEditor} onPrintTicket={(ticket) => void printOrderDocument(ticket)} onDeliveryToggle={() => setDeliveryExpanded((current) => !current)} onPrint={() => void printOrderDocument()} onPayment={openPayment} onReleaseTable={() => void startTableCheckout()} onAppend={() => setAppendProductsOpen(true)} onReview={reviewEvidence} onAdvance={() => void advance(detail)} onCancel={() => void cancelOrder(detail)} />)}
       </Modal>}
 
       {cancelReasonOpen && detail && <Modal title="Cancelar pedido" className="order-cancel-modal" onClose={() => { if (!working && (!cancellationReason.trim() || window.confirm("¿Descartar el motivo y volver al pedido?"))) setCancelReasonOpen(false); }}><form className="form-stack" onSubmit={(event) => { event.preventDefault(); void cancelOrder(detail, cancellationReason); }}><p>El stock reservado será revertido y la acción quedará auditada. Los cobros confirmados no se anulan automáticamente.</p><label>Motivo de cancelación<textarea value={cancellationReason} maxLength={1000} required disabled={working} aria-describedby={cancelError ? "cancel-order-error" : undefined} onChange={(event) => setCancellationReason(event.target.value)} /></label>{cancelError && <p id="cancel-order-error" role="alert">{cancelError}</p>}<div className="modal-form-actions"><button className="button button-secondary" type="button" disabled={working} onClick={() => setCancelReasonOpen(false)}>Volver al pedido</button><button className="button button-primary" type="submit" disabled={working || !cancellationReason.trim()}>{working ? "Cancelando..." : "Confirmar cancelación"}</button></div></form></Modal>}
@@ -902,7 +935,7 @@ export function OrdersPage() {
       {appendProductsOpen && detail && catalogResource.data && <OrderProductPicker title={selectedTable ? `Agregar productos a ${selectedTable.name}` : "Agregar productos al pedido"} catalog={catalogResource.data} channel={orderChannelForPicker(detail.channel)} onClose={() => setAppendProductsOpen(false)} onSave={(lines) => void appendProducts(lines)} />}
       {editingTicket && detail && catalogResource.data && <OrderCommandEditor ticket={editingTicket} items={editableTicketItems(detail, editingTicket)} activeItemCount={detail.items.filter(isActiveOrderItem).length} catalog={catalogResource.data} serviceChannel={orderServiceChannel(detail)} busy={working} onClose={() => setEditingTicket(null)} onSave={(operations) => void saveItemRevisions(operations)} />}
       {editingOrder && branch && editingOrder.branch_id === branch.id && <OrderEditDrawer key={`${branch.id}:${editingOrder.id}`} order={editingOrder} branch={branch} onClose={() => setEditingOrder(null)} onSaved={finishOrderEdit} />}
-      {paymentOpen && detail && branch && <NewOrderPaymentModal branch={branch} total={detail.remaining_amount > 0 ? detail.remaining_amount : detail.total} busy={working} allowDeferredPayment={false} helperText={selectedTable && tableCheckoutMode ? "Al cobrar, la mesa quedará libre de inmediato aunque cocina siga preparando sus comandas." : ["draft", "pending_confirmation"].includes(detail.status) ? "Al registrar el pago, el pedido se enviará directamente a cocina." : "El pago quedará registrado en este pedido."} onClose={() => setPaymentOpen(false)} onConfirm={(selection) => void createPayment(selection)} />}
+      {paymentOpen && detail && branch && <NewOrderPaymentModal branch={branch} total={detail.remaining_amount > 0 ? detail.remaining_amount : detail.total} busy={working} allowDeferredPayment={false} helperText={detail.channel === "dine_in" && detail.table_id && !detail.table_released_at ? "Al cobrar, la mesa quedará libre de inmediato aunque cocina siga preparando sus comandas." : ["draft", "pending_confirmation"].includes(detail.status) ? "Al registrar el pago, el pedido se enviará directamente a cocina." : "El pago quedará registrado en este pedido."} onClose={() => setPaymentOpen(false)} onConfirm={(selection) => void createPayment(selection)} />}
       {transferOpen && <Modal title="Transferir pedido" className="table-transfer-modal" onClose={() => !working && setTransferOpen(false)}>{transferLoading ? <LoadingState label="Buscando mesas libres..." /> : transferTables.length ? <div className="table-transfer-options"><p>Selecciona la mesa libre que recibirá esta cuenta.</p>{transferTables.map((table) => <button key={table.id} type="button" disabled={working} onClick={() => void transferOrder(table)}><span><strong>{table.name}</strong><small>Capacidad para {table.capacity} personas</small></span><ChevronRight /></button>)}</div> : <EmptyState title="No hay mesas libres" detail="Libera otra mesa o vuelve a intentarlo cuando esté disponible." />}</Modal>}
       {toast && <Toast {...toast} durationMs={toast.tone === "success" ? 4500 : undefined} onDismiss={() => setToast(null)} />}
     </div>

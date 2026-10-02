@@ -4,6 +4,7 @@ import { StrictMode } from "react";
 import { SettingsStateProvider } from "./SettingsState";
 import type { RestaurantTable } from "../../types";
 import { RegistersSettings, ZonesAndTablesSettings } from "./ResourceSettings";
+import { ApiError } from "../../lib/api";
 
 const apiMock = vi.hoisted(() => vi.fn());
 vi.mock("../../lib/api", async (importOriginal) => ({ ...await importOriginal<typeof import("../../lib/api")>(), api: apiMock }));
@@ -192,7 +193,7 @@ describe("visual settings zones", () => {
     expect(screen.getByText("1 mesa")).toBeVisible();
   });
 
-  it("keeps archival restricted after a confirmed table save", async () => {
+  it("allows confirmed tables to be archived with their zone after explicit confirmation", async () => {
     apiMock.mockImplementation(async (path, options) => {
       if (path.startsWith("/areas?")) return [area];
       if (path.startsWith("/tables?")) return [];
@@ -206,7 +207,10 @@ describe("visual settings zones", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(screen.getByText("1 mesa")).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "Abrir acciones" }));
-    expect(screen.getByRole("menuitem", { name: /^Borrar/ })).toBeDisabled();
+    expect(screen.getByRole("menuitem", { name: /^Borrar/ })).toBeEnabled();
+    fireEvent.click(screen.getByRole("menuitem", { name: /^Borrar/ }));
+    expect(screen.getByRole("alertdialog", { name: "Archivar zona" })).toHaveTextContent("sus 1 mesas");
+    expect(apiMock.mock.calls.filter(([, options]) => options?.method === "DELETE")).toHaveLength(0);
   });
 
   it("keeps confirmed zone and table writes after a partial save and retries only the missing creation", async () => {
@@ -311,7 +315,7 @@ describe("visual settings zones", () => {
         return [area];
       }
       if (path.startsWith("/tables?")) return [];
-      if (path === "/areas/9" && options?.method === "DELETE") return { archived: true };
+      if (path === "/areas/9" && options?.method === "DELETE") return { ...area, archived_at: "2026-10-02T18:00:00Z", archived_table_ids: [] };
       throw new Error(path);
     });
     render(<Zones />);
@@ -325,6 +329,171 @@ describe("visual settings zones", () => {
     expect(await screen.findByText(/no se pudo actualizar la lista/)).toBeVisible();
     expect(screen.queryByRole("button", { name: "Editar zona Patio" })).toBeNull();
     expect(apiMock.mock.calls.filter(([, options]) => options?.method === "DELETE")).toHaveLength(1);
+  });
+
+  it("discards a persisted table removal on exit before Save", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    apiMock.mockImplementation(async (path) => path.startsWith("/areas?") ? [area] : [table]);
+    render(<Zones />);
+    const layout = await editor();
+    fireEvent.click(within(layout).getByRole("button", { name: "Editar Mesa ventana" }));
+    fireEvent.click(within(layout).getByRole("button", { name: "Borrar mesa" }));
+    expect(within(layout).queryByRole("button", { name: "Editar Mesa ventana" })).toBeNull();
+    expect(screen.getByText("1 mesa")).toBeVisible();
+    fireEvent.click(within(layout).getByRole("button", { name: "Salir" }));
+    const reopened = await editor();
+    expect(within(reopened).getByRole("button", { name: "Editar Mesa ventana" })).toBeVisible();
+    expect(apiMock.mock.calls.filter(([, options]) => options?.method)).toHaveLength(0);
+  });
+
+  it("keeps a reserved table in the confirmed list when its archival is rejected", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    apiMock.mockImplementation(async (path, options) => {
+      if (path.startsWith("/areas?")) return [area];
+      if (path.startsWith("/tables?")) return [table];
+      if (options?.method === "DELETE") throw new ApiError("Resuelve la reserva vigente antes de archivar esta mesa.", 409);
+      throw new Error(path);
+    });
+    render(<Zones />);
+    const layout = await editor();
+    fireEvent.click(within(layout).getByRole("button", { name: "Editar Mesa ventana" }));
+    fireEvent.click(within(layout).getByRole("button", { name: "Borrar mesa" }));
+    fireEvent.click(within(layout).getByRole("button", { name: "Guardar" }));
+    expect(await within(layout).findByRole("alert")).toHaveTextContent("reserva vigente");
+    expect(screen.getByText("1 mesa")).toBeVisible();
+    expect(screen.queryByText(/quedaron guardadas/)).toBeNull();
+    fireEvent.click(within(layout).getByRole("button", { name: "Salir" }));
+    const reopened = await editor();
+    expect(within(reopened).getByRole("button", { name: "Editar Mesa ventana" })).toBeVisible();
+    expect(apiMock.mock.calls.filter(([, options]) => options?.method === "DELETE")).toHaveLength(1);
+  });
+
+  it("retains confirmed removals after a partial save and retries only the unconfirmed table", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const second = { ...table, id: 71, code: "PUERTA", name: "Mesa puerta", position_x: 540, width: 92, shape: "square" as const };
+    let attempts = 0;
+    apiMock.mockImplementation(async (path, options) => {
+      if (path.startsWith("/areas?")) return [area];
+      if (path.startsWith("/tables?")) return [table, second];
+      if (path === "/tables/70" && options?.method === "DELETE") return { ...table, active: false };
+      if (path === "/tables/71" && options?.method === "DELETE") {
+        attempts++;
+        if (attempts === 1) throw new Error("Segunda baja sin confirmar");
+        return { ...second, active: false };
+      }
+      throw new Error(path);
+    });
+    render(<Zones />);
+    const layout = await editor();
+    for (const name of ["Editar Mesa ventana", "Editar Mesa puerta"]) {
+      fireEvent.click(within(layout).getByRole("button", { name }));
+      fireEvent.click(within(layout).getByRole("button", { name: "Borrar mesa" }));
+    }
+    fireEvent.click(within(layout).getByRole("button", { name: "Guardar" }));
+    expect(await within(layout).findByRole("alert")).toHaveTextContent("Segunda baja");
+    expect(screen.getByText("1 mesa")).toBeVisible();
+    const failed = apiMock.mock.calls.find(([path]) => path === "/tables/71");
+    fireEvent.click(within(layout).getByRole("button", { name: "Guardar" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.getByText("0 mesas")).toBeVisible();
+    expect(apiMock.mock.calls.filter(([path]) => path === "/tables/70")).toHaveLength(1);
+    expect(apiMock.mock.calls.filter(([path]) => path === "/tables/71")).toEqual([failed, failed]);
+  });
+
+  it("archives a zone and its free tables with one versioned operation after a lost response", async () => {
+    const second = { ...table, id: 71, code: "PUERTA", name: "Mesa puerta", version: 4 };
+    let archiveAttempts = 0;
+    let archived = false;
+    apiMock.mockImplementation(async (path, options) => {
+      if (path.startsWith("/areas?")) return archived ? [] : [area];
+      if (path.startsWith("/tables?")) return [table, second];
+      if (path === "/areas/9" && options?.method === "DELETE") {
+        archived = true;
+        archiveAttempts++;
+        if (archiveAttempts === 1) throw new Error("Respuesta de archivado perdida");
+        return { ...area, archived_at: "2026-10-02T18:00:00Z", archived_table_ids: [70, 71] };
+      }
+      throw new Error(path);
+    });
+    render(<Zones />);
+    await screen.findByText("2 mesas");
+    fireEvent.click(screen.getByRole("button", { name: "Abrir acciones" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Borrar" }));
+    const confirmation = screen.getByRole("alertdialog", { name: "Archivar zona" });
+    expect(confirmation).toHaveTextContent("sus 2 mesas");
+    expect(apiMock.mock.calls.filter(([, options]) => options?.method)).toHaveLength(0);
+    fireEvent.click(within(confirmation).getByRole("button", { name: "Archivar zona" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Respuesta de archivado perdida");
+    expect(screen.queryByText(/su historial permanece intacto/)).toBeNull();
+    const first = apiMock.mock.calls.find(([, options]) => options?.method === "DELETE")!;
+    expect(JSON.parse(String(first[1]?.body))).toEqual({ expected_version: 1, include_tables: true, tables: [{ id: 70, expected_version: 3 }, { id: 71, expected_version: 4 }] });
+    fireEvent.click(within(confirmation).getByRole("button", { name: "Seguir editando" }));
+    expect(screen.getByRole("alertdialog", { name: "Archivar zona" })).toBeVisible();
+    expect(await screen.findByRole("alert")).toHaveTextContent("Reintenta Archivar zona antes de salir");
+    expect(apiMock.mock.calls.filter(([, options]) => options?.method === "DELETE")).toHaveLength(1);
+    fireEvent.click(within(confirmation).getByRole("button", { name: "Archivar zona" }));
+    expect(await screen.findByText(/su historial permanece intacto/)).toBeVisible();
+    const writes = apiMock.mock.calls.filter(([, options]) => options?.method === "DELETE");
+    expect(writes).toEqual([first, first]);
+    expect(screen.queryByRole("button", { name: "Editar zona Patio" })).toBeNull();
+  });
+
+  it("keeps the zone and tables after an archive reservation error", async () => {
+    apiMock.mockImplementation(async (path, options) => {
+      if (path.startsWith("/areas?")) return [area];
+      if (path.startsWith("/tables?")) return [table];
+      if (options?.method === "DELETE") throw new ApiError("Una mesa tiene una reserva vigente.", 409);
+      throw new Error(path);
+    });
+    render(<Zones />);
+    await screen.findByText("1 mesa");
+    fireEvent.click(screen.getByRole("button", { name: "Abrir acciones" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Borrar" }));
+    fireEvent.click(screen.getByRole("button", { name: "Archivar zona" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("reserva vigente");
+    expect(screen.getByRole("alertdialog", { name: "Archivar zona" })).toBeVisible();
+    expect(screen.queryByText(/su historial permanece intacto/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Seguir editando" }));
+    expect(screen.getByRole("button", { name: "Editar zona Patio" })).toBeVisible();
+    expect(screen.getByText("1 mesa")).toBeVisible();
+  });
+
+  it.each([
+    { id: 99, branch_id: 7, archived_at: "2026-10-02T18:00:00Z", archived_table_ids: [70, 71] },
+    { id: 9, branch_id: 8, archived_at: "2026-10-02T18:00:00Z", archived_table_ids: [70, 71] },
+    { id: 9, branch_id: 7, archived_at: null, archived_table_ids: [70, 71] },
+    { id: 9, branch_id: 7, archived_at: "2026-10-02T18:00:00Z", archived_table_ids: [] },
+    { id: 9, branch_id: 7, archived_at: "2026-10-02T18:00:00Z", archived_table_ids: [70, 70] },
+  ])("retains the zone and exact operation when its archive response is incomplete or foreign: %j", async (unexpected) => {
+    const second = { ...table, id: 71, code: "PUERTA", name: "Mesa puerta", version: 4 };
+    let writes = 0;
+    let archived = false;
+    apiMock.mockImplementation(async (path, options) => {
+      if (path.startsWith("/areas?")) return archived ? [] : [area];
+      if (path.startsWith("/tables?")) return [table, second];
+      if (path === "/areas/9" && options?.method === "DELETE") {
+        writes++;
+        if (writes === 1) return unexpected;
+        archived = true;
+        return { ...area, archived_at: "2026-10-02T18:00:00Z", archived_table_ids: [70, 71] };
+      }
+      throw new Error(path);
+    });
+    render(<Zones />);
+    await screen.findByText("2 mesas");
+    fireEvent.click(screen.getByRole("button", { name: "Abrir acciones" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Borrar" }));
+    const confirmation = screen.getByRole("alertdialog", { name: "Archivar zona" });
+    fireEvent.click(within(confirmation).getByRole("button", { name: "Archivar zona" }));
+    await screen.findByRole("alert");
+    expect(screen.queryByText(/su historial permanece intacto/)).toBeNull();
+    expect(screen.getByText("2 mesas")).toBeVisible();
+    const first = apiMock.mock.calls.find(([, options]) => options?.method === "DELETE")!;
+    fireEvent.click(within(confirmation).getByRole("button", { name: "Seguir editando" }));
+    expect(screen.getByRole("alertdialog", { name: "Archivar zona" })).toBeVisible();
+    fireEvent.click(within(confirmation).getByRole("button", { name: "Archivar zona" }));
+    expect(await screen.findByText(/su historial permanece intacto/)).toBeVisible();
+    expect(apiMock.mock.calls.filter(([, options]) => options?.method === "DELETE")).toEqual([first, first]);
   });
 
   it("invalidates pending saves when Settings disables the same branch context, even if restored before response", async () => {

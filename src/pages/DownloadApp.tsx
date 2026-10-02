@@ -22,7 +22,7 @@ export function DownloadAppPage() {
     <section className="download-app" aria-labelledby="download-app-title">
       <header className="download-app-heading"><h1 id="download-app-title" ref={heading} tabIndex={-1}>Descargar aplicación</h1></header>
       <section className="install-app-card" aria-labelledby="install-app-heading">
-        <header><h2 id="install-app-heading">Aplicación de Escalar AI POS</h2></header>
+        <header><img className="install-app-wordmark" src="/brand/escalar-wordmark-v1.png" alt="Escalar AI" width={192} height={64} /><h2 id="install-app-heading">Aplicación de Escalar AI POS</h2></header>
         <div className="install-app-body">
           <div aria-live="polite" aria-atomic="true">
             {installed && <div className="install-app-success"><Check aria-hidden="true" /><div><h3>Instalación completada</h3><p>Escalar AI POS está instalada o abierta como aplicación. Puedes usarla en su propia ventana.</p></div></div>}

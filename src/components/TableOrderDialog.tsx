@@ -207,10 +207,10 @@ export function TableOrderDialog({
                 className="button button-primary"
                 type="button"
                 data-dialog-initial-focus
-                onClick={checkoutMode ? onPayment : requestCheckout}
-                disabled={working || (checkoutMode && !paymentPending)}
+                onClick={checkoutMode && paymentPending ? onPayment : requestCheckout}
+                disabled={working || Boolean(order.table_released_at)}
               >
-                {checkoutMode ? (paymentPending ? "Cobrar mesa" : "Mesa pagada") : "Cerrar mesa"}
+                {order.table_released_at ? "Mesa liberada" : !paymentPending && totalItems > 0 ? "Liberar mesa" : checkoutMode ? "Cobrar mesa" : "Cerrar mesa"}
               </button>
               <div className="table-order-menu-wrap" ref={menu === "order" ? menuRef : undefined}>
                 <button

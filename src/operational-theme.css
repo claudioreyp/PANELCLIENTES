@@ -84,7 +84,8 @@ body.pos-operational :is(.button, .icon-button):disabled { opacity: .48; cursor:
 body.pos-operational .app-shell { grid-template-columns: 240px minmax(0, 1fr); background: var(--paper-2); }
 body.pos-operational .sidebar { padding: 16px 12px; border-color: var(--line); }
 body.pos-operational .brand-block { border: 0; padding: 0 8px 10px; }
-body.pos-operational .brand-mark { background: #f0f0f0; color: #666; border-radius: 7px; width: 32px; height: 32px; }
+body.pos-operational .brand-mark { background: transparent; border-radius: 0; width: 32px; height: 32px; flex-shrink: 0; }
+body.pos-operational .brand-mark img { display: block; width: 100%; height: 100%; object-fit: contain; }
 body.pos-operational .brand-block strong { font-size: .875rem; font-weight: 600; }
 body.pos-operational .brand-block span { font-size: .75rem; color: #666; letter-spacing: 0; text-transform: none; }
 body.pos-operational .sidebar-branch-picker { margin: 4px 2px 12px; }

@@ -4,6 +4,7 @@ body.pos-operational .download-app-heading h1:focus { outline: none; }
 .install-app-card { max-width: 700px; margin: 28px auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper); overflow: hidden; }
 .install-app-card > header { padding: 20px 24px; border-bottom: 1px solid var(--line); }
 .install-app-card h2 { margin: 0; font-size: 1rem; }
+.install-app-wordmark { display: block; width: 192px; max-width: 100%; height: auto; margin: -8px 0 8px; object-fit: contain; }
 .install-app-body { padding: 24px; }
 .install-app-body > .install-app-description { margin-top: 0; }
 .install-app-body p { line-height: 1.6; }

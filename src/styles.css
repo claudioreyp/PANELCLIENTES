@@ -537,7 +537,7 @@ label select { width: 100%; border: 1px solid var(--line); border-radius: 10px; 
 .login-story::before { content: ""; position: absolute; inset: 0; opacity: .12; background-image: radial-gradient(circle at 10% 20%, #efaa87 0 1px, transparent 2px), radial-gradient(circle at 80% 55%, #efaa87 0 1px, transparent 2px); background-size: 45px 45px, 65px 65px; }
 .login-story::after { content: ""; position: absolute; width: 500px; height: 500px; border: 1px solid rgba(255,255,255,.08); border-radius: 50%; right: -240px; bottom: -220px; box-shadow: 0 0 0 70px rgba(255,255,255,.025), 0 0 0 140px rgba(255,255,255,.02); }
 .login-brand { display: flex; gap: 9px; align-items: center; position: relative; z-index: 1; font-weight: 700; }
-.login-brand svg { color: #efaa87; }
+.login-brand img { display: block; width: 240px; height: 80px; max-width: 100%; object-fit: contain; background: #fff; border-radius: 8px; }
 .login-copy { margin: auto 0; max-width: 650px; position: relative; z-index: 1; }
 .login-copy h1 { font-family: "IBM Plex Serif"; font-size: clamp(2.8rem, 6vw, 5.7rem); font-style: italic; letter-spacing: -.055em; line-height: .98; }
 .login-copy p { color: #bdcbc4; line-height: 1.6; max-width: 590px; }

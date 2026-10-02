@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -25,11 +26,14 @@ const expectedManifest = {
   theme_color: "#25824f",
 };
 const expectedIcons = [
-  { src: "/icons/icon-192.png", size: 192, purpose: "any" },
-  { src: "/icons/icon-512.png", size: 512, purpose: "any" },
-  { src: "/icons/icon-maskable-512.png", size: 512, purpose: "maskable" },
+  { src: "/icons/escalar-icon-v1-192.png", size: 192, purpose: "any" },
+  { src: "/icons/escalar-icon-v1-512.png", size: 512, purpose: "any" },
+  { src: "/icons/escalar-maskable-v1-512.png", size: 512, purpose: "maskable" },
 ];
-const appleIcon = { src: "/icons/apple-touch-icon.png", size: 180 };
+const appleIcon = { src: "/icons/escalar-apple-v1-180.png", size: 180 };
+const favicon = { src: "/icons/escalar-favicon-v1-64.png", size: 64 };
+const brandSources = ["/brand/escalar-symbol-v1.png", "/brand/escalar-wordmark-v1.png"];
+const sha256 = bytes => createHash("sha256").update(bytes).digest("hex");
 const deepRoutes = [
   "/login", "/descargar-app", "/pedidos", "/catalogo", "/disponibilidad", "/caja",
   "/configuracion/general", "/configuracion/agente", "/configuracion/dispositivos",
@@ -79,7 +83,7 @@ function verifyHtml(html, label) {
     }
     const links = [
       ['link[rel="manifest"]', "/manifest.webmanifest"],
-      ['link[rel="icon"][type="image/svg+xml"]', "/icons/icon.svg"],
+      ['link[rel="icon"][type="image/png"][sizes="64x64"]', favicon.src],
       ['link[rel="icon"][type="image/png"][sizes="192x192"]', expectedIcons[0].src],
       ['link[rel="apple-touch-icon"][sizes="180x180"]', appleIcon.src],
     ];
@@ -95,14 +99,10 @@ function verifyHtml(html, label) {
   }
 }
 
-function verifySvg(bytes) {
-  const dom = new JSDOM(bytes.toString("utf8"), { contentType: "image/svg+xml" });
-  try {
-    assert.equal(dom.window.document.documentElement.localName, "svg", "Favicon is not SVG");
-    assert.equal(dom.window.document.querySelector("#store-mark")?.getAttribute("stroke"), "#25824f", "SVG must use the current green Store mark");
-  } finally {
-    dom.window.close();
-  }
+function verifyBrandAsset(bytes, metadata, src) {
+  const entry = [...metadata.sources, ...metadata.icons].find(item => item.src === src);
+  assert(entry && /^[a-f0-9]{64}$/.test(entry.sha256), `${src}: missing generated brand asset hash`);
+  assert.equal(sha256(bytes), entry.sha256, `${src}: differs from the original or its generated derivative`);
 }
 
 function parseBaseUrl(value) {
@@ -149,15 +149,25 @@ async function main() {
   verifyManifest(manifest);
   const html = await readFile(indexPath, "utf8");
   verifyHtml(html, fileURLToPath(indexPath));
+  const brandMetadata = JSON.parse(await readFile(new URL("icons/escalar-assets-v1.json", directory), "utf8"));
+  assert.equal(brandMetadata.version, 1, "Unknown Escalar AI brand asset version");
+  assert.deepEqual(brandMetadata.sources.map(item => item.src), brandSources, "Wrong supplied brand originals");
+  assert.deepEqual(brandMetadata.icons.map(item => ({ src: item.src, size: item.size, purpose: item.purpose })),
+    [...expectedIcons, { ...appleIcon, purpose: "any" }, { ...favicon, purpose: "any" }], "Wrong generated brand icons");
   const icons = new Map();
-  for (const icon of [...expectedIcons, appleIcon]) {
+  for (const icon of [...expectedIcons, appleIcon, favicon]) {
     const bytes = await readFile(new URL(icon.src.slice(1), directory));
     verifyPng(bytes, icon);
+    verifyBrandAsset(bytes, brandMetadata, icon.src);
     icons.set(icon.src, bytes);
   }
-  const svg = await readFile(new URL("icons/icon.svg", directory));
-  verifySvg(svg);
-  console.log(`${values.source ? "Source" : "Build"} OK: manifest identity, HTML metadata/links, SVG, and four PNG dimensions`);
+  const originals = new Map();
+  for (const src of brandSources) {
+    const bytes = await readFile(new URL(src.slice(1), directory));
+    verifyBrandAsset(bytes, brandMetadata, src);
+    originals.set(src, bytes);
+  }
+  console.log(`${values.source ? "Source" : "Build"} OK: manifest identity, HTML metadata/links, supplied brand originals and five PNG dimensions/hashes`);
 
   if (!baseUrl) {
     console.log("HTTP endpoints/content types/deep routes not checked: no URL supplied.");
@@ -166,14 +176,16 @@ async function main() {
   const remoteManifest = JSON.parse((await getStatic(baseUrl, "/manifest.webmanifest", ["application/manifest+json"])).toString("utf8"));
   verifyManifest(remoteManifest);
   assert.deepEqual(remoteManifest, manifest, "Served manifest differs from the local artifact");
-  for (const icon of [...expectedIcons, appleIcon]) {
+  for (const icon of [...expectedIcons, appleIcon, favicon]) {
     const bytes = await getStatic(baseUrl, icon.src, ["image/png"]);
     verifyPng(bytes, icon);
     assert(bytes.equals(icons.get(icon.src)), `${icon.src}: served icon differs from local artifact`);
   }
-  const remoteSvg = await getStatic(baseUrl, "/icons/icon.svg", ["image/svg+xml"]);
-  verifySvg(remoteSvg);
-  assert(remoteSvg.equals(svg), "Served SVG differs from local artifact");
+  for (const src of brandSources) {
+    const bytes = await getStatic(baseUrl, src, ["image/png"]);
+    verifyBrandAsset(bytes, brandMetadata, src);
+    assert(bytes.equals(originals.get(src)), `${src}: served brand original differs from local artifact`);
+  }
   const entryHtml = (await getStatic(baseUrl, "/", ["text/html"])).toString("utf8");
   const entryScripts = verifyHtml(entryHtml, "/");
   for (const path of deepRoutes) {

@@ -1,6 +1,8 @@
 import { MapPinned, Plus, Vault } from "lucide-react";
 import { useId, useLayoutEffect, useRef, useState } from "react";
 import { DialogPortal, useDialogSurface } from "../../lib/dialog";
+import { api, ApiError } from "../../lib/api";
+import { resolveIdempotentIntent, type IdempotentIntent } from "../../lib/orders";
 import { archiveSettingsResource, saveSettings, settingsErrorMessage } from "../../lib/settings";
 import type { RestaurantTable } from "../../types";
 import type { SettingsRegister } from "../../types/settings";
@@ -62,10 +64,11 @@ export function ZonesAndTablesSettings({ branchId }: { branchId: number }) {
   const [editor, setEditor] = useState<{ area: DiningArea; tables: RestaurantTable[] } | null>(null);
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
-  const [areaArchiveTarget, setAreaArchiveTarget] = useState<DiningArea | null>(null);
+  const [areaArchiveTarget, setAreaArchiveTarget] = useState<{ area: DiningArea; tables: RestaurantTable[] } | null>(null);
+  const areaArchiveIntent = useRef<IdempotentIntent | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  useDirtyRegistration({ dirty: false, saving: enabled && saving, save: null });
+  useDirtyRegistration({ dirty: false, saving: enabled && (saving || areaArchiveIntent.current !== null), save: null });
   useLayoutEffect(() => {
     savingRef.current = false;
     setSaving(false);
@@ -107,24 +110,32 @@ export function ZonesAndTablesSettings({ branchId }: { branchId: number }) {
 
   async function archiveSelectedArea() {
     if (!areaArchiveTarget || !ready || savingRef.current) return;
-    if (tablesQuery.data.some((table) => table.area_id === areaArchiveTarget.id)) {
-      setError("Mueve las mesas a otra zona antes de archivarla.");
-      setAreaArchiveTarget(null);
-      return;
-    }
+    const target = areaArchiveTarget;
     const isCurrent = captureLifetime();
     if (!isCurrent()) return;
     savingRef.current = true;
     setSaving(true);
     setError(null);
     try {
-      await archiveSettingsResource(`/areas/${areaArchiveTarget.id}`, areaArchiveTarget.version || 1);
+      const body = JSON.stringify({ expected_version: target.area.version || 1, include_tables: true, tables: target.tables.map((table) => ({ id: table.id, expected_version: table.version })) });
+      areaArchiveIntent.current = resolveIdempotentIntent(areaArchiveIntent.current, `${target.area.id}:${body}`, body);
+      const archived = await api<DiningArea & { archived_at?: string | null; archived_table_ids?: number[] }>(`/areas/${target.area.id}`, { method: "DELETE", body: areaArchiveIntent.current.body, idempotencyKey: areaArchiveIntent.current.key });
       if (!isCurrent()) return;
-      areasQuery.setData((current) => current.filter((area) => area.id !== areaArchiveTarget.id));
+      const expectedIds = new Set(target.tables.map((table) => table.id));
+      if (archived.id !== target.area.id || archived.branch_id !== originBranchId || !archived.archived_at
+        || !Array.isArray(archived.archived_table_ids) || archived.archived_table_ids.length !== expectedIds.size
+        || new Set(archived.archived_table_ids).size !== expectedIds.size
+        || archived.archived_table_ids.some((id) => !expectedIds.has(id))) {
+        throw new Error("No pudimos comprobar el borrado de esta zona. Reintenta Archivar zona para recuperar el resultado.");
+      }
+      areaArchiveIntent.current = null;
+      areasQuery.setData((current) => current.filter((area) => area.id !== target.area.id));
+      tablesQuery.setData((current) => current.filter((table) => table.area_id !== target.area.id));
       setAreaArchiveTarget(null);
       setSuccess("La zona se archivó y su historial permanece intacto.");
       void areasQuery.reload(true);
     } catch (caught) {
+      if (caught instanceof ApiError && caught.status >= 400 && caught.status < 500) areaArchiveIntent.current = null;
       if (isCurrent()) setError(settingsErrorMessage(caught, "No se pudo archivar la zona."));
     } finally {
       if (isCurrent()) { savingRef.current = false; setSaving(false); }
@@ -144,8 +155,8 @@ export function ZonesAndTablesSettings({ branchId }: { branchId: number }) {
         const count = tablesQuery.data.filter((table) => table.area_id === area.id).length;
         return <div className="settings-resource-row" key={area.id}>
           <button className="settings-resource-copy zone-open-button" type="button" disabled={!ready || saving} onClick={() => openArea(area)} aria-label={`Editar zona ${area.name}`}><MapPinned /><span><strong>{area.name}</strong><small>{tablesQuery.available && !tablesQuery.error ? `${count} ${count === 1 ? "mesa" : "mesas"}` : "Mesas no disponibles"}</small></span></button>
-          <SettingsActionMenu onEdit={() => openArea(area)} editDisabled={!ready || saving} onArchive={() => { if (ready && !savingRef.current) setAreaArchiveTarget(area); }}
-            archiveDisabled={!ready || saving || count > 0} archiveHelp={count > 0 ? "Mueve las mesas a otra zona antes de archivarla." : !ready ? "Carga las mesas antes de archivar una zona." : undefined} />
+          <SettingsActionMenu onEdit={() => openArea(area)} editDisabled={!ready || saving} onArchive={() => { if (ready && !savingRef.current) { setError(null); setSuccess(null); setAreaArchiveTarget({ area, tables: tablesQuery.data.filter((table) => table.area_id === area.id && table.branch_id === originBranchId).map((table) => ({ ...table })) }); } }}
+            archiveDisabled={!ready || saving} archiveHelp={!ready ? "Carga las mesas antes de archivar una zona." : undefined} />
         </div>;
       })}
       {!loading && !loadFailed && !areasQuery.data.length && <div className="settings-empty-inline"><MapPinned /><strong>Aún no hay zonas</strong><span>Crea una zona para comenzar a organizar tus mesas.</span></div>}
@@ -153,17 +164,17 @@ export function ZonesAndTablesSettings({ branchId }: { branchId: number }) {
     {creating && <ZoneNameDialog enabled={enabled} busy={saving} error={error} onClose={() => setCreating(false)} onCreate={(name) => void createArea(name)} />}
     {editor && <ZoneEditor key={editor.area.id} area={editor.area} tables={editor.tables} enabled={enabled} settingsLayer
       onClose={() => setEditor(null)}
-      onProgress={(area, tables) => {
+      onProgress={(area, tables, removedIds = []) => {
         if (!enabled) return;
         areasQuery.setData((current) => current.map((item) => item.id === area.id ? area : item));
-        tablesQuery.setData((current) => tables.reduce(upsertTable, current));
+        tablesQuery.setData((current) => tables.reduce(upsertTable, current.filter((table) => !removedIds.includes(table.id))));
       }}
       onSaved={(area) => {
         if (!enabled) return;
         setEditor(null);
         setSuccess(`Las mesas quedaron guardadas en ${area.name}.`);
       }} />}
-    {enabled && areaArchiveTarget && <SettingsConfirmDialog title="Archivar zona" detail={`${areaArchiveTarget.name} dejará de aparecer para nuevos pedidos. Las ventas y mesas históricas se conservarán.`} confirmLabel="Archivar zona" danger busy={saving} onCancel={() => setAreaArchiveTarget(null)} onConfirm={() => void archiveSelectedArea()} />}
+    {enabled && areaArchiveTarget && <SettingsConfirmDialog title="Archivar zona" detail={`Se quitarán la zona ${areaArchiveTarget.area.name} y sus ${areaArchiveTarget.tables.length} mesas del plano. Su historial se conservará. Las cuentas abiertas y reservas vigentes impedirán el borrado.${error ? ` ${error}` : ""}`} confirmLabel="Archivar zona" danger busy={saving} onCancel={() => { if (areaArchiveIntent.current) { setError("No pudimos comprobar el borrado. Reintenta Archivar zona antes de salir."); return; } setAreaArchiveTarget(null); }} onConfirm={() => void archiveSelectedArea()} />}
   </div>;
 }
 

@@ -367,12 +367,12 @@ function BranchTablesWorkspace({ onStartOrder, onOpenOrder }: TablesWorkspacePro
       area={editingArea}
       tables={resource.data?.tables.filter((table) => table.area_id === editingArea.id) || []}
       onClose={() => setEditingArea(null)}
-      onProgress={(area, tables) => {
+      onProgress={(area, tables, removedIds = []) => {
         if (!active.current) return;
         const savedIds = new Set(tables.map((table) => table.id));
         resource.setData((current) => current ? {
           areas: current.areas.map((item) => item.id === area.id ? area : item),
-          tables: current.tables.filter((table) => !savedIds.has(table.id)).concat(tables),
+          tables: current.tables.filter((table) => !savedIds.has(table.id) && !removedIds.includes(table.id)).concat(tables),
         } : current);
       }}
       onSaved={(area) => {

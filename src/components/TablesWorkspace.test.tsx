@@ -9,7 +9,7 @@ import { TablesWorkspace } from "./TablesWorkspace";
 
 const tenant = vi.hoisted(() => ({ branch: { id: 1 }, context: { role: "owner", business: { id: 1 } } }));
 vi.mock("../lib/tenant", () => ({ useTenant: () => tenant }));
-vi.mock("../lib/api", () => ({ api: vi.fn() }));
+vi.mock("../lib/api", async (original) => ({ ...await original<typeof import("../lib/api")>(), api: vi.fn() }));
 vi.mock("../lib/hooks", async (original) => ({ ...await original<typeof import("../lib/hooks")>(), useBranchRealtime: vi.fn() }));
 const area = { id: 51, branch_id: 1, name: "Sala principal", rows: 5, columns: 7, version: 1, sort_order: 0 };
 beforeEach(() => { tenant.branch = { id: 1 }; tenant.context.business = { id: 1 }; tenant.context.role = "owner"; });
@@ -327,6 +327,34 @@ describe("direct table layout save", () => {
 });
 
 describe("table movement", () => {
+  it("removes an operational table only after its archive response is confirmed", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const table: RestaurantTable = { id: 70, branch_id: 1, area_id: 51, code: "M1", name: "Mesa 1", capacity: 4, position_x: 28, position_y: 28, width: 92, height: 76, shape: "square", status: "available", version: 4 };
+    let resolve!: (value: unknown) => void;
+    vi.mocked(api).mockImplementation(async (path, options) => {
+      if (path.startsWith("/areas?")) return [area];
+      if (path.startsWith("/tables?")) return [table];
+      if (path === "/tables/70" && options?.method === "DELETE") return new Promise((done) => { resolve = done; });
+      throw new Error(path);
+    });
+    const view = render(<TablesWorkspace />);
+    fireEvent.click(await screen.findByRole("button", { name: "Editar sala" }));
+    const editor = screen.getByRole("dialog");
+    fireEvent.click(within(editor).getByRole("button", { name: "Editar Mesa 1" }));
+    fireEvent.click(within(editor).getByRole("button", { name: "Borrar mesa" }));
+    expect(view.container.querySelectorAll(".operational-table")).toHaveLength(1);
+    expect(vi.mocked(api).mock.calls.filter(([, options]) => options?.method)).toHaveLength(0);
+    fireEvent.click(within(editor).getByRole("button", { name: "Guardar" }));
+    expect(view.container.querySelectorAll(".operational-table")).toHaveLength(1);
+    await act(async () => resolve({ ...table, active: false }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(view.container.querySelectorAll(".operational-table")).toHaveLength(0);
+    expect(screen.getByRole("button", { name: "Agregar mesas" })).toBeVisible();
+    expect(screen.getByRole("status")).toHaveTextContent("guardadas en Sala principal");
+    expect(vi.mocked(api).mock.calls.filter(([, options]) => options?.method === "DELETE")).toHaveLength(1);
+    confirm.mockRestore();
+  });
+
   it("persists a drag after an intermediate render using the pointerdown version", async () => {
     vi.stubGlobal("PointerEvent", MouseEvent);
     const table: RestaurantTable = { id: 70, branch_id: 1, area_id: 51, code: "M1", name: "Mesa 1", capacity: 4, position_x: 28, position_y: 28, width: 92, height: 76, shape: "square", status: "available", version: 4 };

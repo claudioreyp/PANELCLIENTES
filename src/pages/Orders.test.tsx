@@ -3,10 +3,11 @@ import { StrictMode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, ApiError } from "../lib/api";
+import { useBranchRealtime } from "../lib/hooks";
 import type { OrderDetail, RestaurantTable } from "../types";
 import { OrdersPage } from "./Orders";
 
-const tenant = vi.hoisted(() => ({ branch: { id: 1 }, context: { role: "owner", business: { timezone: "America/Lima" } } }));
+const tenant = vi.hoisted(() => ({ branch: { id: 1 } as { id: number; accepted_payment_methods?: string[] }, context: { role: "owner", business: { timezone: "America/Lima" } } }));
 vi.mock("../lib/tenant", () => ({ useTenant: () => tenant }));
 vi.mock("../lib/api", async (original) => ({ ...await original<typeof import("../lib/api")>(), api: vi.fn() }));
 vi.mock("../lib/hooks", async (original) => ({ ...await original<typeof import("../lib/hooks")>(), useBranchRealtime: vi.fn() }));
@@ -383,6 +384,287 @@ describe("branch-scoped table callbacks", () => {
     await act(async () => { if (outcome === "success") complete({ ...order(1), table_id: 101, version: 2 }); else fail(new Error("Transferencia anterior fallida")); });
     expect(screen.getByRole("dialog", { name: "Cuenta de Mesa 2" })).toBeVisible();
     expect(screen.queryByRole("dialog", { name: "Transferir pedido" })).toBeNull();
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+});
+
+describe("table payment from the orders panel", () => {
+  const mutations = () => vi.mocked(api).mock.calls.filter(([, options]) => options?.method === "POST");
+  const payCalls = () => mutations().filter(([path]) => path.endsWith("/table-checkout/pay"));
+
+  function installReads(current: () => OrderDetail) {
+    const reads = mockReads({ detail: () => current() });
+    return async (path: string) => {
+      if (path.startsWith("/orders/workspace?")) return {
+        ...await reads(path), items: [{ ...current(), item_count: 1, requires_review: false }], total: 1,
+      };
+      return reads(path);
+    };
+  }
+  async function openPanelDetail() {
+    fireEvent.click((await screen.findAllByRole("button", { name: "Abrir pedido 1 de cliente sin nombre" }))[0]);
+    const dialog = await screen.findByRole("dialog", { name: "Pedido #1 · #TEST-1" });
+    await within(dialog).findByText("Monto cobrado");
+    return dialog;
+  }
+  async function selectYapeAndPay() {
+    const dialog = await screen.findByRole("dialog", { name: "Cobrar al cliente" });
+    fireEvent.click(within(dialog).getByRole("radio", { name: /^Yape/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: /^Cobrar / }));
+  }
+
+  it.each(["wrapped", "flat"])("recognizes a table order from Panel de pedidos and uses the confirmed %s checkout version", async (format) => {
+    tenant.branch = { id: 1, accepted_payment_methods: ["yape"] };
+    let saved = order(1);
+    const reads = installReads(() => saved);
+    vi.mocked(api).mockImplementation(async (path, options) => {
+      if (!options?.method) return reads(path);
+      if (path.endsWith("/table-checkout/start")) {
+        saved = { ...saved, version: 2, checkout_started_at: "2026-10-02T18:00:00Z" };
+        return format === "wrapped" ? { order: saved } : saved;
+      }
+      if (path.endsWith("/table-checkout/pay")) {
+        expect(JSON.parse(String(options.body))).toEqual({ expected_version: 2,
+          payments: [{ method: "yape", amount: 24, cash_session_id: null, note: null }] });
+        saved = { ...saved, version: 3, paid_amount: 24, remaining_amount: 0, payment_status: "paid", table_released_at: "2026-10-02T18:01:00Z" };
+        return { order: saved };
+      }
+      throw new Error(`Unexpected mutation ${path}`);
+    });
+    render(app());
+    const detail = await openPanelDetail();
+    fireEvent.click(within(detail).getByRole("button", { name: /^Cobrar / }));
+    expect(await screen.findByText(/la mesa quedará libre de inmediato/i)).toBeVisible();
+    await selectYapeAndPay();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(mutations().map(([path]) => path)).toEqual(["/orders/700/table-checkout/start", "/orders/700/table-checkout/pay"]);
+    expect(screen.getByRole("status")).toHaveTextContent("Mesa cobrada y liberada");
+  });
+
+  it("pays only the remaining balance and retains previous partial payments", async () => {
+    tenant.branch = { id: 1, accepted_payment_methods: ["yape"] };
+    let saved = { ...order(1), paid_amount: 10, remaining_amount: 14, payment_status: "partial" };
+    const reads = installReads(() => saved);
+    vi.mocked(api).mockImplementation(async (path, options) => {
+      if (!options?.method) return reads(path);
+      if (path.endsWith("/start")) {
+        saved = { ...saved, version: 2, checkout_started_at: "2026-10-02T18:00:00Z" };
+        return { order: saved };
+      }
+      expect(path).toBe("/orders/700/table-checkout/pay");
+      expect(JSON.parse(String(options.body))).toEqual({ expected_version: 2,
+        payments: [{ method: "yape", amount: 14, cash_session_id: null, note: null }] });
+      saved = { ...saved, version: 3, paid_amount: 24, remaining_amount: 0, payment_status: "paid", table_released_at: "2026-10-02T18:01:00Z" };
+      return { order: saved };
+    });
+    render(app());
+    fireEvent.click(within(await openPanelDetail()).getByRole("button", { name: "Cobrar 14 S/" }));
+    await selectYapeAndPay();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(payCalls()).toHaveLength(1);
+    expect(mutations().some(([path]) => path.endsWith("/payments"))).toBe(false);
+    expect(saved.paid_amount).toBe(24);
+  });
+
+  it("releases a fully paid table from Panel de pedidos using start and an empty payment list", async () => {
+    const originalPayment = { id: 80, order_id: 700, method: "cash", amount: 24, status: "confirmed", created_at: "2026-09-12T12:30:00Z" };
+    let saved: OrderDetail = { ...order(1), payment_status: "paid", paid_amount: 24, remaining_amount: 0, payments: [originalPayment] };
+    const reads = installReads(() => saved);
+    vi.mocked(api).mockImplementation(async (path, options) => {
+      if (!options?.method) return reads(path);
+      if (path === "/orders/700/table-checkout/start") {
+        expect(JSON.parse(String(options.body))).toEqual({ expected_version: 1 });
+        saved = { ...saved, version: 2, checkout_started_at: "2026-10-02T18:00:00Z" };
+        return { order: saved };
+      }
+      expect(path).toBe("/orders/700/table-checkout/pay");
+      expect(JSON.parse(String(options.body))).toEqual({ expected_version: 2, payments: [] });
+      saved = { ...saved, version: 3, table_released_at: "2026-10-02T18:01:00Z" };
+      return { order: saved };
+    });
+    render(app());
+    const detail = await openPanelDetail();
+    expect(within(detail).queryByRole("button", { name: /^Cobrar / })).toBeNull();
+    fireEvent.click(within(detail).getByRole("button", { name: "Liberar mesa" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.queryByRole("dialog", { name: "Cobrar al cliente" })).toBeNull();
+    expect(mutations().map(([path]) => path)).toEqual(["/orders/700/table-checkout/start", "/orders/700/table-checkout/pay"]);
+    expect(mutations().every(([, options]) => Boolean(options?.idempotencyKey))).toBe(true);
+    expect(saved.payments).toEqual([originalPayment]);
+    expect(saved.status).toBe("preparing");
+    expect(saved.paid_amount).toBe(24);
+    expect(screen.getByRole("status")).toHaveTextContent("Mesa liberada. Se conservaron los pagos ya registrados");
+  });
+
+  it("does not offer release or another payment for an already released table in Panel de pedidos", async () => {
+    const saved: OrderDetail = { ...order(1), payment_status: "paid", paid_amount: 24, remaining_amount: 0,
+      checkout_started_at: "2026-10-02T18:00:00Z", table_released_at: "2026-10-02T18:01:00Z" };
+    const reads = installReads(() => saved);
+    vi.mocked(api).mockImplementation(async (path, options) => {
+      if (options?.method) throw new Error(`Unexpected mutation ${path}`);
+      return reads(path);
+    });
+    render(app());
+    const detail = await openPanelDetail();
+    expect(within(detail).queryByRole("button", { name: "Liberar mesa" })).toBeNull();
+    expect(within(detail).queryByRole("button", { name: /^Cobrar / })).toBeNull();
+    expect(within(detail).getByRole("button", { name: "Imprimir pedido" })).toBeEnabled();
+    expect(mutations()).toHaveLength(0);
+  });
+
+  it.each([null, "2026-10-02T18:00:00Z"])("releases a zero-balance table without another payment (checkout %s)", async (checkout_started_at) => {
+    let saved = { ...order(1), checkout_started_at, payment_status: "paid", paid_amount: 24, remaining_amount: 0 };
+    const reads = mockReads({ detail: () => saved });
+    vi.mocked(api).mockImplementation(async (path, options) => {
+      if (!options?.method) return reads(path);
+      if (path.endsWith("/start")) {
+        saved = { ...saved, version: 2, checkout_started_at: "2026-10-02T18:00:00Z" };
+        return { order: saved };
+      }
+      expect(path).toBe("/orders/700/table-checkout/pay");
+      expect(JSON.parse(String(options.body))).toEqual({ expected_version: checkout_started_at ? 1 : 2, payments: [] });
+      return { order: { ...saved, table_released_at: "2026-10-02T18:01:00Z", version: saved.version + 1 } };
+    });
+    render(app());
+    await openAccount();
+    fireEvent.click(await screen.findByRole("button", { name: "Liberar mesa" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.queryByRole("dialog", { name: "Cobrar al cliente" })).toBeNull();
+    expect(payCalls()).toHaveLength(1);
+    expect(mutations().some(([path]) => path.endsWith("/payments"))).toBe(false);
+    expect(screen.getByRole("status")).toHaveTextContent("Mesa liberada. Se conservaron los pagos ya registrados");
+  });
+
+  it.each(["failed", "unconfirmed", "another_order", "another_branch"])("does not pay or claim release when checkout start is %s", async (failure) => {
+    tenant.branch = { id: 1, accepted_payment_methods: ["yape"] };
+    const saved = order(1);
+    const reads = installReads(() => saved);
+    vi.mocked(api).mockImplementation(async (path, options) => {
+      if (!options?.method) return reads(path);
+      if (!path.endsWith("/table-checkout/start")) throw new Error(`Forbidden payment after ${failure}`);
+      if (failure === "failed") throw new Error("No se pudo cerrar la cuenta");
+      return { order: { ...saved, version: 2, checkout_started_at: failure === "unconfirmed" ? null : "2026-10-02T18:00:00Z",
+        ...(failure === "another_order" ? { id: 999 } : {}), ...(failure === "another_branch" ? { branch_id: 2 } : {}) } };
+    });
+    render(app());
+    fireEvent.click(within(await openPanelDetail()).getByRole("button", { name: /^Cobrar / }));
+    await selectYapeAndPay();
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Cobrar al cliente" })).toBeNull());
+    expect(payCalls()).toHaveLength(0);
+    expect(mutations()).toHaveLength(1);
+    expect(screen.getByRole("alert")).not.toHaveTextContent("Mesa cobrada y liberada");
+  });
+
+  it("does not pay from an older checkout response after a newer balance read for the same account", async () => {
+    tenant.branch = { id: 1, accepted_payment_methods: ["yape"] };
+    let saved: OrderDetail = order(1);
+    let finishStart!: (value: unknown) => void;
+    const reads = installReads(() => saved);
+    vi.mocked(api).mockImplementation(async (path, options) => {
+      if (!options?.method) return reads(path);
+      if (path === "/orders/700/table-checkout/start") return new Promise(resolve => { finishStart = resolve; });
+      throw new Error(`Forbidden payment with an older balance ${path}`);
+    });
+    render(app());
+    const detail = await openPanelDetail();
+    fireEvent.click(within(detail).getByRole("button", { name: "Cobrar 24 S/" }));
+    await selectYapeAndPay();
+    await waitFor(() => expect(mutations()).toHaveLength(1));
+    saved = { ...saved, version: 3, checkout_started_at: "2026-10-02T18:00:00Z", paid_amount: 10,
+      payment_status: "partial", remaining_amount: 14 };
+    await act(async () => vi.mocked(useBranchRealtime).mock.calls.at(-1)![1]());
+    await waitFor(() => expect(screen.getByRole("dialog", { name: "Cobrar al cliente" }).querySelector("header > strong")).toHaveTextContent(/14/));
+    await act(async () => finishStart({ order: { ...order(1), version: 2, checkout_started_at: "2026-10-02T18:00:00Z" } }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/saldo/i);
+    expect(screen.queryByRole("dialog", { name: "Cobrar al cliente" })).toBeNull();
+    expect(payCalls()).toHaveLength(0);
+    expect(mutations().map(([path]) => path)).toEqual(["/orders/700/table-checkout/start"]);
+    expect(within(screen.getByRole("dialog", { name: "Pedido #1 · #TEST-1" })).getByRole("button", { name: "Cobrar 14 S/" })).toBeEnabled();
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("retries an uncertain payment with the same confirmed checkout body and idempotency key", async () => {
+    tenant.branch = { id: 1, accepted_payment_methods: ["yape"] };
+    let saved = order(1);
+    let attempts = 0;
+    const reads = installReads(() => saved);
+    vi.mocked(api).mockImplementation(async (path, options) => {
+      if (!options?.method) return reads(path);
+      if (path.endsWith("/start")) {
+        saved = { ...saved, version: 2, checkout_started_at: "2026-10-02T18:00:00Z" };
+        return { order: saved };
+      }
+      if (path.endsWith("/pay")) {
+        if (++attempts === 1) throw new Error("Respuesta de pago perdida");
+        return { order: { ...saved, version: 3, paid_amount: 24, remaining_amount: 0, payment_status: "paid", table_released_at: "2026-10-02T18:01:00Z" } };
+      }
+      throw new Error(`Unexpected mutation ${path}`);
+    });
+    render(app());
+    fireEvent.click(within(await openPanelDetail()).getByRole("button", { name: /^Cobrar / }));
+    await selectYapeAndPay();
+    expect(await screen.findByRole("alert")).toHaveTextContent("Respuesta de pago perdida");
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Pedido #1 · #TEST-1" })).getByRole("button", { name: /^Cobrar / }));
+    await selectYapeAndPay();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    const calls = payCalls();
+    expect(calls).toHaveLength(2);
+    expect(calls[0][1]?.body).toBe(calls[1][1]?.body);
+    expect(calls[0][1]?.idempotencyKey).toBeTruthy();
+    expect(calls[0][1]?.idempotencyKey).toBe(calls[1][1]?.idempotencyKey);
+    expect(mutations().filter(([path]) => path.endsWith("/start"))).toHaveLength(1);
+  });
+
+  it("retries an uncertain checkout start with the same body/key and performs payment only after confirmation", async () => {
+    tenant.branch = { id: 1, accepted_payment_methods: ["yape"] };
+    let saved = order(1);
+    let attempts = 0;
+    const reads = installReads(() => saved);
+    vi.mocked(api).mockImplementation(async (path, options) => {
+      if (!options?.method) return reads(path);
+      if (path.endsWith("/start")) {
+        if (++attempts === 1) throw new Error("Respuesta de cierre perdida");
+        saved = { ...saved, version: 2, checkout_started_at: "2026-10-02T18:00:00Z" };
+        return { order: saved };
+      }
+      expect(path).toBe("/orders/700/table-checkout/pay");
+      expect(JSON.parse(String(options.body)).expected_version).toBe(2);
+      return { order: { ...saved, version: 3, paid_amount: 24, remaining_amount: 0, payment_status: "paid", table_released_at: "2026-10-02T18:01:00Z" } };
+    });
+    render(app());
+    fireEvent.click(within(await openPanelDetail()).getByRole("button", { name: /^Cobrar / }));
+    await selectYapeAndPay();
+    expect(await screen.findByRole("alert")).toHaveTextContent("Respuesta de cierre perdida");
+    expect(payCalls()).toHaveLength(0);
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Pedido #1 · #TEST-1" })).getByRole("button", { name: /^Cobrar / }));
+    await selectYapeAndPay();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    const calls = mutations().filter(([path]) => path.endsWith("/start"));
+    expect(calls).toHaveLength(2);
+    expect(calls[0][1]?.body).toBe(calls[1][1]?.body);
+    expect(calls[0][1]?.idempotencyKey).toBeTruthy();
+    expect(calls[0][1]?.idempotencyKey).toBe(calls[1][1]?.idempotencyKey);
+    expect(payCalls()).toHaveLength(1);
+  });
+
+  it("discards a late checkout start after changing branch and never follows it with payment", async () => {
+    tenant.branch = { id: 1, accepted_payment_methods: ["yape"] };
+    let complete!: (value: unknown) => void;
+    const reads = installReads(() => order(tenant.branch.id));
+    vi.mocked(api).mockImplementation(async (path, options) => {
+      if (!options?.method) return reads(path);
+      return new Promise(resolve => { complete = resolve; });
+    });
+    const view = render(app());
+    fireEvent.click(within(await openPanelDetail()).getByRole("button", { name: /^Cobrar / }));
+    await selectYapeAndPay();
+    await waitFor(() => expect(mutations()).toHaveLength(1));
+    tenant.branch = { id: 2, accepted_payment_methods: ["yape"] };
+    view.rerender(app());
+    await act(async () => complete({ order: { ...order(1), version: 2, checkout_started_at: "2026-10-02T18:00:00Z" } }));
+    expect(payCalls()).toHaveLength(0);
+    expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.queryByRole("status")).toBeNull();
     expect(screen.queryByRole("alert")).toBeNull();
   });

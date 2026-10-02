@@ -56,12 +56,21 @@ Los enlaces de manifest/iconos son absolutos para funcionar en rutas profundas.
 Vercel conserva el rewrite SPA y el MIME del manifiesto; los archivos estaticos
 existentes se sirven como archivos, no como HTML del POS.
 
-Los iconos de tienda reutilizan la geometria Lucide y el verde del POS; su licencia
-esta incluida en `public/icons/icon.svg`. No contienen imagenes de un restaurante ni
-marcas de las referencias. PNG 192/512, variante maskable 512 y Apple 180:
+Los iconos nuevos usan el simbolo original suministrado de Escalar AI, sin redibujo
+ni cambio de colores. Los originales permanecen en `public/brand/`: simbolo
+cuadrado y marca horizontal. El generador local solo redimensiona y aplica fondo
+blanco y espacio de seguridad a la variante maskable. Las rutas de recursos llevan
+`v1`, mientras `id`, nombres, inicio y ambito del manifiesto se conservan para no
+crear otra identidad instalada. El tema verde operativo no cambia.
+
+PNG 192/512, variante maskable 512, Apple 180 y favicon 64. El generador conserva
+huellas SHA256 en `public/icons/escalar-assets-v1.json`; el verificador compara
+originales y derivados. Los recursos antiguos siguen disponibles para manifiestos
+que el navegador ya tuviera guardados. Para generar o comprobar:
 
 ```powershell
 node scripts/generate-app-icons.mjs
+node scripts/generate-app-icons.mjs --check
 node scripts/verify-pwa-build.mjs --source
 npm run build
 npm run preview -- --host 127.0.0.1 --port 5176 --strictPort

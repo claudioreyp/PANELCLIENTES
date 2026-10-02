@@ -1,6 +1,7 @@
-import { ChevronLeft, LogOut, TableProperties, Minus, MoveHorizontal, MoveVertical, Plus, Save } from "lucide-react";
+import { ChevronLeft, LogOut, TableProperties, Minus, MoveHorizontal, MoveVertical, Plus, Save, Trash2 } from "lucide-react";
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { api } from "../lib/api";
+import { api, ApiError } from "../lib/api";
+import { resolveIdempotentIntent, type IdempotentIntent } from "../lib/orders";
 import { DialogPortal, useDialogSurface } from "../lib/dialog";
 import type { RestaurantTable } from "../types";
 import { useDirtyRegistration } from "./settings/SettingsState";
@@ -16,7 +17,7 @@ type ZoneEditorProps = {
   area: DiningArea;
   tables: RestaurantTable[];
   onClose: () => void;
-  onProgress: (area: DiningArea, tables: RestaurantTable[]) => void;
+  onProgress: (area: DiningArea, tables: RestaurantTable[], removedIds?: number[]) => void;
   onSaved: (area: DiningArea) => void;
   enabled?: boolean;
   settingsLayer?: boolean;
@@ -29,6 +30,7 @@ export function ZoneEditor({ area, tables, onClose, onProgress, onSaved, enabled
   const onError = setError;
   const savingRef = useRef(false);
   const pendingCreates = useRef(new Set<string>());
+  const pendingArchives = useRef(new Map<number, IdempotentIntent>());
   const [areaBaseline, setAreaBaseline] = useState(area);
   const [tableBaseline, setTableBaseline] = useState(() => new Map(tables.map((table) => [table.id, table])));
   const [name, setName] = useState(area.name);
@@ -44,8 +46,9 @@ export function ZoneEditor({ area, tables, onClose, onProgress, onSaved, enabled
     const baseline = tableBaseline.get(table.id);
     return !baseline || editableTableSnapshot(table) !== editableTableSnapshot(baseline);
   });
-  const dirty = areaDirty || tablesDirty;
-  useDirtyRegistration({ dirty, saving: enabled && saving, save: null });
+  const removedTables = [...tableBaseline.values()].filter((table) => !localTables.some((item) => item.id === table.id));
+  const dirty = areaDirty || tablesDirty || removedTables.length > 0;
+  useDirtyRegistration({ dirty, saving: enabled && (saving || pendingArchives.current.size > 0), save: null });
   useLayoutEffect(() => {
     savingRef.current = false;
     setSaving(false);
@@ -54,6 +57,10 @@ export function ZoneEditor({ area, tables, onClose, onProgress, onSaved, enabled
 
   function requestClose() {
     if (!enabled || savingRef.current) return;
+    if (pendingArchives.current.size > 0) {
+      onError("No pudimos comprobar el borrado. Reintenta Guardar antes de salir.");
+      return;
+    }
     if (dirty && !window.confirm("¿Salir sin guardar los cambios de la zona?")) return;
     onClose();
   }
@@ -117,6 +124,18 @@ export function ZoneEditor({ area, tables, onClose, onProgress, onSaved, enabled
     setLocalTables((current) => current.map((table) => table.id === selectedTable.id ? { ...table, ...changes } : table));
   }
 
+  function removeSelectedTable() {
+    if (locked || savingRef.current || !selectedTable) return;
+    if (pendingCreates.current.has(selectedTable.code)) {
+      onError("Reintenta Guardar para comprobar esa mesa antes de borrarla.");
+      return;
+    }
+    if (!window.confirm(`¿Quitar ${selectedTable.name} del plano? El cambio se aplicará al Guardar y su historial se conservará.`)) return;
+    setLocalTables((current) => current.filter((table) => table.id !== selectedTable.id));
+    setSelectedTableId(null);
+    setError(null);
+  }
+
   function resizeSelected(axis: "width" | "height", nextUnits: number) {
     if (!enabled || savingRef.current || !selectedTable) return;
     const cell = tableCell(selectedTable, columns, rows);
@@ -172,6 +191,24 @@ export function ZoneEditor({ area, tables, onClose, onProgress, onSaved, enabled
     let workingTables: RestaurantTable[] = localTables.map((table) => ({ ...table, area_id: area.id }));
     const nextBaseline = new Map(tableBaseline);
     try {
+      // Archive removals before shrinking the area or reusing a free cell.
+      for (const removed of removedTables) {
+        const body = JSON.stringify({ expected_version: removed.version });
+        const intent = resolveIdempotentIntent(pendingArchives.current.get(removed.id) || null, `${removed.id}:${body}`, body);
+        pendingArchives.current.set(removed.id, intent);
+        try {
+          const archived = await api<RestaurantTable>(`/tables/${removed.id}`, { method: "DELETE", body: intent.body, idempotencyKey: intent.key });
+          if (archived.id !== removed.id || archived.branch_id !== area.branch_id || (!archived.archived_at && archived.active !== false)) throw new Error("No pudimos comprobar qué mesa se borró. Reintenta Guardar.");
+        } catch (caught) {
+          if (caught instanceof ApiError && caught.status >= 400 && caught.status < 500) pendingArchives.current.delete(removed.id);
+          throw caught;
+        }
+        if (!isCurrent()) return;
+        pendingArchives.current.delete(removed.id);
+        nextBaseline.delete(removed.id);
+        setTableBaseline(new Map(nextBaseline));
+        onProgress(updatedArea, [], [removed.id]);
+      }
       if (areaDirty) {
         updatedArea = await api<DiningArea>(`/areas/${area.id}`, {
           method: "PATCH",
@@ -286,6 +323,8 @@ export function ZoneEditor({ area, tables, onClose, onProgress, onSaved, enabled
                 <div role="group" aria-label="Altura"><span>Altura</span>{selectedHeight === 1 ? <button className="zone-expand-button" type="button" aria-label="Expandir altura" disabled={locked || !selectedCell || selectedCell.row + 2 > rows} onClick={() => resizeSelected("height", 2)}><MoveVertical /> Expandir</button> : <span className="zone-stepper"><button type="button" aria-label="Reducir altura" disabled={locked} onClick={() => resizeSelected("height", selectedHeight - 1)}><Minus /></button><output aria-label="Altura actual">{selectedHeight}</output><button type="button" aria-label="Aumentar altura" disabled={locked || !selectedCell || selectedCell.row + selectedHeight + 1 > rows} onClick={() => resizeSelected("height", selectedHeight + 1)}><Plus /></button></span>}</div>
               </div>
               <p className="zone-editor-note">Los cambios se aplicarán al pulsar Guardar.</p>
+              <button className="zone-table-delete" type="button" disabled={locked || Boolean(selectedTable.active_order_id) || ["occupied", "reserved"].includes(selectedTable.status)} onClick={removeSelectedTable}><Trash2 aria-hidden="true" /> Borrar mesa</button>
+              {(selectedTable.active_order_id || ["occupied", "reserved"].includes(selectedTable.status)) && <p className="zone-editor-note">Cierra la cuenta o resuelve la reserva antes de borrar esta mesa.</p>}
             </> : <>
               <h3>Zona {name.trim() || area.name}</h3>
               <label>Nombre de zona<input data-dialog-initial-focus disabled={locked} value={name} maxLength={120} onChange={(event) => enabled && !savingRef.current && setName(event.target.value)} /></label>

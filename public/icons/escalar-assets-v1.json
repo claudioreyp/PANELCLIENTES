@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "sources": [
+    {
+      "src": "/brand/escalar-symbol-v1.png",
+      "sha256": "1e7723007f67c658f98c277a42bc63400714f978a723222e77bce43cf9dd621c"
+    },
+    {
+      "src": "/brand/escalar-wordmark-v1.png",
+      "sha256": "e56c3c5a198b0dcbe7dbd141a46dcfcd1deed7115548ac9eb47d34b9b4a8efba"
+    }
+  ],
+  "icons": [
+    {
+      "src": "/icons/escalar-icon-v1-192.png",
+      "size": 192,
+      "purpose": "any",
+      "sha256": "ad2f715e439e9b0e708f5dad7d8efd92d8303a98ea4a1fa4d494a4cd97e13a3e"
+    },
+    {
+      "src": "/icons/escalar-icon-v1-512.png",
+      "size": 512,
+      "purpose": "any",
+      "sha256": "212b17a86fb94295e8ba130626a71b6c1dfa061dec1ab3ff59c2911160fcedcb"
+    },
+    {
+      "src": "/icons/escalar-maskable-v1-512.png",
+      "size": 512,
+      "purpose": "maskable",
+      "sha256": "07ca4ea14581d2da255d2d16f67692a8cbd426db7f8e41424f570e5922548784"
+    },
+    {
+      "src": "/icons/escalar-apple-v1-180.png",
+      "size": 180,
+      "purpose": "any",
+      "sha256": "d64afc35e59010984b0c486510816c463048beac67cddafd80c652c7c667b4dd"
+    },
+    {
+      "src": "/icons/escalar-favicon-v1-64.png",
+      "size": 64,
+      "purpose": "any",
+      "sha256": "97de3e94fbc2f1d04f06bdb064b9a23acf1dd78d5a18c25d53335903fa0546d4"
+    }
+  ]
+}

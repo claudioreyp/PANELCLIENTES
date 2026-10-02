@@ -26,6 +26,7 @@ type DetailContentProps = {
   onDeliveryToggle: () => void;
   onPrint: () => void;
   onPayment: () => void;
+  onReleaseTable?: () => void;
   onAppend: () => void;
   onReview: (approve: boolean, evidence?: PaymentEvidence) => Promise<void>;
   onAdvance: () => void;
@@ -36,15 +37,16 @@ function ReceiptAmount({ value }: { value: number }) {
   return <>{Number(value).toLocaleString("es-PE", { maximumFractionDigits: 2 })} S/</>;
 }
 
-export function OrderDetailContent({ order, onRefresh, deliveryExpanded, working, canEdit, onEdit, onCopy, onEditTicket, onPrintTicket, onDeliveryToggle, onPrint, onPayment, onAppend, onReview, onAdvance, onCancel }: DetailContentProps) {
+export function OrderDetailContent({ order, onRefresh, deliveryExpanded, working, canEdit, onEdit, onCopy, onEditTicket, onPrintTicket, onDeliveryToggle, onPrint, onPayment, onReleaseTable, onAppend, onReview, onAdvance, onCancel }: DetailContentProps) {
   const location = orderLocation(order);
   const action = nextAction(order);
   const phone = whatsappPhone(order.customer_phone);
   const canAppend = canEdit && appendAllowed(order);
+  const canReleaseTable = canEdit && onReleaseTable && order.channel === "dine_in" && Boolean(order.table_id) && !order.table_released_at && order.remaining_amount === 0 && order.items.some(isActiveOrderItem) && order.status !== "cancelled" && !hasOpenPaymentEvidence(order);
   const additionLabel = agentAdditionLabel(order.recent_agent_addition);
   const source = order.source === "pos" ? "Punto de venta" : order.source === "public_store" ? "Menú digital" : ["agent", "integration", "n8n", "whatsapp_agent", "whatsapp"].includes(order.source) ? "WhatsApp" : order.source;
   return <div className="order-detail-content">
-    <section className="order-detail-summary"><div><span>{formatPosDate(order.created_at, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}</span><OrderIdentity {...order} /><h3>{order.customer_name || "Cliente sin nombre"}</h3></div><div className="order-detail-top-actions"><button className="button button-secondary" disabled={working} onClick={onPrint}><Printer /> Imprimir pedido</button>{canEdit && order.remaining_amount > 0 && !["closed", "cancelled"].includes(order.status) && !hasOpenPaymentEvidence(order) && <button className="button button-primary" disabled={working} onClick={onPayment}>Cobrar <ReceiptAmount value={order.remaining_amount} /></button>}<OrderActionsMenu floating label="Acciones del pedido" disabled={working} actions={[
+    <section className="order-detail-summary"><div><span>{formatPosDate(order.created_at, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}</span><OrderIdentity {...order} /><h3>{order.customer_name || "Cliente sin nombre"}</h3></div><div className="order-detail-top-actions"><button className="button button-secondary" disabled={working} onClick={onPrint}><Printer /> Imprimir pedido</button>{canEdit && order.remaining_amount > 0 && !["closed", "cancelled"].includes(order.status) && !hasOpenPaymentEvidence(order) && <button className="button button-primary" disabled={working} onClick={onPayment}>Cobrar <ReceiptAmount value={order.remaining_amount} /></button>}{canReleaseTable && <button className="button button-primary" disabled={working} onClick={onReleaseTable}>Liberar mesa</button>}<OrderActionsMenu floating label="Acciones del pedido" disabled={working} actions={[
       { label: "Editar pedido", icon: <Pencil />, disabled: !canEdit || !isOrderEditable(order), onSelect: onEdit },
       { label: "Copiar pedido", icon: <Clipboard />, onSelect: onCopy },
       { label: "Revisar impresión automática", icon: <Printer />, disabled: !canEdit, onSelect: () => requestOrderPrinting({ orderId: order.id, branchId: order.branch_id, review: true }) },

@@ -12,6 +12,10 @@
 .zone-name-dialog h2 { margin: 0 0 24px; font-size: 1.25rem; }
 .zone-name-dialog .form-help { margin-top: 10px; line-height: 1.5; }
 .zone-name-dialog footer { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 24px; }
+.zone-table-delete { display: flex; align-items: center; gap: 8px; margin-top: 24px; padding: 12px 0; min-height: 44px; border: 0; background: transparent; color: var(--red-500); font-weight: 600; }
+.zone-table-delete svg { width: 18px; height: 18px; }
+.zone-table-delete:hover:not(:disabled) { text-decoration: underline; text-underline-offset: 3px; }
+.zone-table-delete:disabled { color: var(--muted, #666); cursor: not-allowed; }
 .settings-zones .settings-resource-row .zone-open-button { flex: 1; min-width: 0; padding: 8px 0; border: 0; text-align: left; color: inherit; background: transparent; }
 .settings-zones .zone-open-button strong { white-space: normal; overflow-wrap: anywhere; }
 .settings-zones .zone-open-button:hover strong { text-decoration: underline; text-underline-offset: 3px; }
