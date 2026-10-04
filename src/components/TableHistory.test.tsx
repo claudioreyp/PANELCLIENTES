@@ -37,7 +37,8 @@ describe("table history detail", () => {
     expect(screen.getByText("Pagado")).toBeVisible();
     expect(screen.queryByText("Anulado")).toBeNull();
     expect(screen.getByRole("button", { name: "Imprimir cuenta" })).toBeDisabled();
-    expect(screen.getByText(/no anula los cobros confirmados/)).toBeVisible();
+    expect(screen.getByText("Reembolso no registrado")).toBeVisible();
+    expect(screen.getByText(/Los cobros confirmados se conservan/)).toBeVisible();
     expect(screen.queryByText("0 S/")).toBeNull();
   });
 

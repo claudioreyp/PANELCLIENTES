@@ -1,4 +1,5 @@
 import { OrderDetailContent } from "../components/OrderDetailContent";
+import { OrderCancellationDialog } from "../components/OrderCancellationDialog";
 import { nextAction } from "../lib/order-detail-model";
 import {
   ChevronRight,
@@ -80,8 +81,7 @@ export function OrdersPage() {
   const [historicalSelection, setHistoricalSelection] = useState(false);
   const historyTriggerRef = useRef<HTMLButtonElement>(null);
   const [cancelReasonOpen, setCancelReasonOpen] = useState(false);
-  const [cancellationReason, setCancellationReason] = useState("");
-  const [cancelError, setCancelError] = useState<string | null>(null);
+  const cancellationLocked = useRef(false);
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
   const [page, setPage] = useState(1);
@@ -220,8 +220,7 @@ export function OrdersPage() {
     setTableHistoryOpen(false);
     setHistoricalSelection(false);
     setCancelReasonOpen(false);
-    setCancellationReason("");
-    setCancelError(null);
+    cancellationLocked.current = false;
     setSelectedTable(null);
     setTableCheckoutMode(false);
     setPaymentOpen(false);
@@ -549,45 +548,34 @@ export function OrdersPage() {
     }
   }
 
-  async function cancelOrder(order: OrderDetail, reason?: string) {
+  function cancelOrder(order: OrderDetail) {
     if (!isCurrentSelection(order)) return;
-    if (reason === undefined) {
-      setCancellationReason("");
-      setCancelError(null);
-      setCancelReasonOpen(true);
-      return;
+    setCancelReasonOpen(true);
+  }
+
+  const cancellationLockChanged = useCallback((locked: boolean) => {
+    if (!isCurrentBranch()) return;
+    cancellationLocked.current = locked;
+    setWorking(locked);
+  }, [isCurrentBranch]);
+
+  function finishCancellation(saved: OrderDetail) {
+    if (!isCurrentSelection(saved)) return;
+    setCancelReasonOpen(false);
+    cancellationLocked.current = false;
+    setWorking(false);
+    detailRef.current = saved;
+    setDetail(saved);
+    workspace.setData((current) => current ? { ...current, items: current.items.map((item) => item.id === saved.id ? { ...item, status: saved.status, payment_status: saved.payment_status, financial_summary: saved.financial_summary, version: saved.version, total: saved.total, requires_review: false } : item) } : current);
+    if (selectedTable) {
+      setSelectedId(null);
+      setSelectedTable(null);
+      setTableCheckoutMode(false);
+    } else {
+      void refreshDetail(saved.id);
     }
-    if (working || !reason.trim()) return;
-    setWorking(true);
-    setCancelError(null);
-    try {
-      const saved = await api<Order>(`/orders/${order.id}/transition`, {
-        method: "POST",
-        body: JSON.stringify({ status: "cancelled", expected_version: order.version, reason: reason.trim() }),
-      });
-      if (!isCurrentSelection(order)) return;
-      setCancelReasonOpen(false);
-      setCancellationReason("");
-      const updated = { ...order, ...saved, cancellation_reason: reason.trim(), kitchen_tickets: order.kitchen_tickets.map((ticket) => ["queued", "preparing"].includes(ticket.status) ? { ...ticket, status: "cancelled" as const } : ticket) };
-      detailRef.current = updated;
-      setDetail(updated);
-      workspace.setData((current) => current ? { ...current, items: current.items.map((item) => item.id === order.id ? { ...item, status: saved.status, payment_status: saved.payment_status, version: saved.version, total: saved.total, requires_review: false } : item) } : current);
-      setWorking(false);
-      if (selectedTable) {
-        setSelectedId(null);
-        setSelectedTable(null);
-        setTableCheckoutMode(false);
-      } else {
-        void refreshDetail(order.id);
-      }
-      void workspace.refresh();
-      setToast({ message: "Pedido cancelado y stock revertido.", tone: "success" });
-    } catch (caught) {
-      if (!isCurrentSelection(order)) return;
-      setCancelError(caught instanceof Error ? caught.message : "No se pudo cancelar el pedido.");
-    } finally {
-      if (isCurrentSelection(order)) setWorking(false);
-    }
+    void workspace.refresh();
+    setToast({ message: saved.financial_summary?.refunded ? "Pedido cancelado y reembolso registrado." : "Pedido cancelado y stock revertido.", tone: "success" });
   }
 
   function openPayment() {
@@ -759,6 +747,7 @@ export function OrdersPage() {
   }
 
   function closeSelectedOrder() {
+    if (cancellationLocked.current) return;
     if (routeParams.has("order_id")) {
       const next = new URLSearchParams(routeParams);
       next.delete("order_id");
@@ -911,7 +900,7 @@ export function OrdersPage() {
               : <OrderDetailContent key={detail.id} order={detail} onRefresh={() => refreshOrder(detail.id)} deliveryExpanded={deliveryExpanded} working={working} canEdit={canEditOrders} onEdit={() => setEditingOrder(detail)} onCopy={() => void copyOrder()} onEditTicket={openTicketEditor} onPrintTicket={(ticket) => void printOrderDocument(ticket)} onDeliveryToggle={() => setDeliveryExpanded((current) => !current)} onPrint={() => void printOrderDocument()} onPayment={openPayment} onReleaseTable={() => void startTableCheckout()} onAppend={() => setAppendProductsOpen(true)} onReview={reviewEvidence} onAdvance={() => void advance(detail)} onCancel={() => void cancelOrder(detail)} />)}
       </Modal>}
 
-      {cancelReasonOpen && detail && <Modal title="Cancelar pedido" className="order-cancel-modal" onClose={() => { if (!working && (!cancellationReason.trim() || window.confirm("¿Descartar el motivo y volver al pedido?"))) setCancelReasonOpen(false); }}><form className="form-stack" onSubmit={(event) => { event.preventDefault(); void cancelOrder(detail, cancellationReason); }}><p>El stock reservado será revertido y la acción quedará auditada. Los cobros confirmados no se anulan automáticamente.</p><label>Motivo de cancelación<textarea value={cancellationReason} maxLength={1000} required disabled={working} aria-describedby={cancelError ? "cancel-order-error" : undefined} onChange={(event) => setCancellationReason(event.target.value)} /></label>{cancelError && <p id="cancel-order-error" role="alert">{cancelError}</p>}<div className="modal-form-actions"><button className="button button-secondary" type="button" disabled={working} onClick={() => setCancelReasonOpen(false)}>Volver al pedido</button><button className="button button-primary" type="submit" disabled={working || !cancellationReason.trim()}>{working ? "Cancelando..." : "Confirmar cancelación"}</button></div></form></Modal>}
+      {cancelReasonOpen && detail && <OrderCancellationDialog key={`${detail.business_id}:${detail.branch_id}:${detail.id}:${context?.role}`} order={detail} onClose={() => setCancelReasonOpen(false)} onLocked={cancellationLockChanged} onSaved={finishCancellation} />}
 
       {newOrderOpen && branch && catalogResource.data && <NewOrderDrawer branch={branch} catalog={catalogResource.data} initialChannel={newOrderTable ? "dine_in" : "counter"} table={newOrderTable} onClose={() => { if (!isCurrentBranch()) return; setNewOrderOpen(false); setNewOrderTable(null); }} onError={(message) => { if (isCurrentBranch()) setToast({ message, tone: "error" }); }} onCreated={(completion) => {
         if (!isCurrentBranch()) return;

@@ -40,6 +40,21 @@ describe("idempotent order intents", () => {
   });
 });
 
+describe("refund detail compatibility", () => {
+  it("preserves original payment summary and adds actual refund rows without replacing gross collection", () => {
+    const financial = { collected: 24, refunded: 24, net_collected: 0, refundable: 0, status: "refunded" };
+    const refund = { id: 1, order_id: 8, method: "cash", amount: 24, signed_amount: -24, register_id: 3, register_name: "Principal", session_id: 2, created_at: "2026-10-04T20:02:00" };
+    const normalized = normalizeOrderDetailResponse({
+      order: { id: 8, number: "FULL-8", business_id: 1, branch_id: 1, channel: "counter", source: "pos", status: "cancelled", payment_status: "paid", subtotal: 24, discount: 0, delivery_fee: 0, total: 24, version: 2, created_at: "2026-10-04T20:00:00", items: [] },
+      payments: [{ id: 1, order_id: 8, method: "card", amount: 24, status: "confirmed", created_at: "2026-10-04T20:00:00" }],
+      payment_summary: { paid: 24, remaining: 0 }, refunds: [refund], financial_summary: financial,
+    });
+    expect(normalized).toMatchObject({ total: 24, paid_amount: 24, remaining_amount: 0, financial_summary: financial, refunds: [refund] });
+    expect(normalized.payments).toHaveLength(1);
+    expect(normalized.payments[0]).toMatchObject({ status: "confirmed", amount: 24, method: "card" });
+  });
+});
+
 describe("orders workspace compatibility", () => {
   beforeEach(() => apiMock.mockReset());
 

@@ -213,6 +213,7 @@ export type OrderWorkspaceItem = {
   status: string;
   payment_status: string;
   paid_amount?: number;
+  financial_summary?: OrderFinancialSummary;
   total: number;
   delivery_fee: number;
   delivery_fee_status?: "pending_quote" | "final";
@@ -245,11 +246,35 @@ export type OrderPayment = {
   cash_register_name?: string | null;
 };
 
+export type OrderRefund = {
+  id: number;
+  order_id: number;
+  method: string;
+  amount: number;
+  created_at: string;
+  register_id: number;
+  register_name: string;
+  session_id: number;
+  signed_amount: number;
+  note?: string | null;
+  created_by?: string | null;
+};
+
+export type OrderFinancialSummary = {
+  collected: number;
+  refunded: number;
+  net_collected: number;
+  refundable: number;
+  status: string;
+};
+
 export type OrderDetail = Order & {
   table_context?: { table_id: number | null; table_name: string | null; area_id?: number | null; area_name?: string | null } | null;
   cancellation_reason?: string | null;
   edit_policy?: { can_edit: boolean; fulfillment_locked: boolean; reason: string | null };
   payments: OrderPayment[];
+  refunds?: OrderRefund[];
+  financial_summary?: OrderFinancialSummary;
   payment_evidence?: PaymentEvidence | null;
   payment_evidences?: PaymentEvidence[];
   payment_requests?: OrderPaymentRequest[];

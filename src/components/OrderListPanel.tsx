@@ -7,11 +7,14 @@ import { OrderIdentity } from "./OrderIdentity";
 import "./orders-workspace.css";
 
 export function OrderPaymentBadge({ status }: { status: string }) {
-  const labels: Record<string, string> = { void: "Anulado", pending: "Pago pendiente", paid: "Pagado", partial: "Pago parcial", evidence_received: "Comprobante recibido", under_review: "Pendiente de revisión", rejected: "Pago rechazado", refunded: "Reembolsado" };
+  const labels: Record<string, string> = { void: "Anulado", pending: "Pago pendiente", paid: "Pagado", partial: "Pago parcial", evidence_received: "Comprobante recibido", under_review: "Pendiente de revisión", rejected: "Pago rechazado", refunded: "Reembolsado", refund_not_recorded: "Reembolso no registrado" };
   return <span className={`order-payment-badge payment-${status}`}><i aria-hidden="true" />{labels[status] || "Por revisar"}</span>;
 }
 
-export function orderPaymentDisplayStatus(order: Pick<OrderWorkspaceItem, "status" | "payment_status" | "paid_amount">) {
+export function orderPaymentDisplayStatus(order: Pick<OrderWorkspaceItem, "status" | "payment_status" | "paid_amount" | "financial_summary">) {
+  if (order.status === "cancelled" && order.financial_summary) {
+    return order.financial_summary.status === "voided" ? "void" : order.financial_summary.status;
+  }
   return order.status === "cancelled" && order.paid_amount === 0 && !["paid", "partial", "refunded"].includes(order.payment_status) ? "void" : order.payment_status;
 }
 

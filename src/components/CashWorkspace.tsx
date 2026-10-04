@@ -18,6 +18,8 @@ import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent 
 import { useLocation, useSearchParams } from "react-router-dom";
 import { AuditReturnLink, positiveRouteId } from "../lib/audit-navigation";
 import { ApiError, api } from "../lib/api";
+import { parsePosDate } from "../lib/pos-dates";
+import { checkoutPaymentMethods, paymentMethodLabel, type CheckoutPaymentMethod } from "../lib/order-checkout";
 import { DialogPortal, useDialogSurface } from "../lib/dialog";
 import { useTenant } from "../lib/tenant";
 import { EmptyState, ErrorState, LoadingState, Modal, Money, Toast } from "./ui";
@@ -39,6 +41,7 @@ type CashRegister = {
 
 type PendingOrder = {
   id: number;
+  folio?: number | null;
   number?: string | null;
   order_number?: string | null;
   remaining_amount?: number | null;
@@ -55,6 +58,8 @@ type CashCutSummary = {
   total_expected_amount: number;
   total_difference?: number | null;
   result: CashResult;
+  reconciliation_status?: string;
+  has_discrepancy?: boolean;
 };
 
 type CashCutPreview = {
@@ -63,6 +68,7 @@ type CashCutPreview = {
   version: number;
   period_started_at?: string | null;
   opening_fund: number;
+  has_cash_activity: boolean;
   has_card_activity: boolean;
   transfer_expected_amount: number;
   pending_orders: PendingOrder[];
@@ -71,6 +77,12 @@ type CashCutPreview = {
 
 type CashTransaction = {
   id: number;
+  kind?: "payment" | "movement" | "refund";
+  movement_type?: string;
+  method?: string;
+  signed_amount?: number;
+  order_id?: number | null;
+  order_folio?: number | null;
   created_at?: string | null;
   amount: number;
   order_number?: string | null;
@@ -89,6 +101,8 @@ type CashMethodGroup = {
 };
 
 type CashCutDetail = CashCutSummary & {
+  opening_amount?: number;
+  previous_session_id?: number | null;
   cash_withdrawn_amount: number;
   methods: CashMethodGroup[];
   notes?: string | null;
@@ -102,7 +116,14 @@ type CashMovement = {
   note?: string | null;
   created_at: string;
   created_by?: string | null;
+  cash_session_id?: number | null;
+  signed_amount?: number;
+  method?: string;
+  payment_method?: string;
 };
+
+type MovementTotals = { income_amount: number; withdrawal_amount: number; expense_amount: number; refund_amount: number; signed_amount: number };
+type MovementResponse = PagedResponse<CashMovement> & { branch_id?: number; register?: { name?: string }; summary?: MovementTotals; session_id?: number | null };
 
 type PagedResponse<T> = {
   items: T[];
@@ -132,7 +153,7 @@ function formatDateTime(value?: string | null, timezone = "America/Lima") {
     month: "short",
     hour: "numeric",
     minute: "2-digit",
-  }).format(new Date(value));
+  }).format(parsePosDate(value));
 }
 
 function denominationKey(value: number) {
@@ -149,6 +170,68 @@ export function calculateDenominationTotal(counts: CashDenominationCounts) {
 
 function freshIdempotencyKey() {
   return globalThis.crypto?.randomUUID?.() || `cash-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+type CashIntent = { path: string; body: string; key: string };
+function isDefiniteRejection(caught: unknown) {
+  return caught instanceof ApiError && caught.status >= 400 && caught.status < 500 && caught.status !== 408;
+}
+
+function useCashIntent() {
+  const intent = useRef<CashIntent | null>(null);
+  const mounted = useRef(true);
+  const [busy, setBusy] = useState(false);
+  const [uncertain, setUncertain] = useState(false);
+  const busyRef = useRef(false);
+  const locked = busy || uncertain;
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  useEffect(() => {
+    if (!locked) return;
+    const preventUnload = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", preventUnload);
+    return () => window.removeEventListener("beforeunload", preventUnload);
+  }, [locked]);
+  async function send<T>(path: string, payload: unknown): Promise<T | undefined> {
+    if (busyRef.current) return;
+    intent.current ||= { path, body: JSON.stringify(payload), key: freshIdempotencyKey() };
+    busyRef.current = true;
+    setBusy(true);
+    try {
+      const result = await api<T>(intent.current.path, { method: "POST", body: intent.current.body, idempotencyKey: intent.current.key });
+      if (!mounted.current) return;
+      intent.current = null;
+      setUncertain(false);
+      return result;
+    } catch (caught) {
+      if (!mounted.current) return;
+      if (isDefiniteRejection(caught)) { intent.current = null; setUncertain(false); }
+      else setUncertain(true);
+      throw caught;
+    } finally {
+      busyRef.current = false;
+      if (mounted.current) setBusy(false);
+    }
+  }
+  return { send, busy, locked, uncertain };
+}
+
+function signedTransactionAmount(transaction: CashTransaction) {
+  if (transaction.signed_amount !== undefined) return transaction.signed_amount;
+  return transaction.kind === "refund" || ["withdrawal", "expense", "refund"].includes(transaction.movement_type || "")
+    ? -Math.abs(transaction.amount) : transaction.amount;
+}
+
+function transactionGroup(transaction: CashTransaction) {
+  if (transaction.kind === "refund" || transaction.movement_type === "refund") return "refund";
+  if (transaction.movement_type === "income") return "income";
+  if (transaction.movement_type === "withdrawal") return "withdrawal";
+  if (transaction.movement_type === "expense") return "expense";
+  return transaction.kind === "movement" ? "movement" : "payment";
+}
+
+function methodLabel(method?: string) {
+  return method && checkoutPaymentMethods.includes(method as CheckoutPaymentMethod)
+    ? paymentMethodLabel(method as CheckoutPaymentMethod) : "Método no registrado";
 }
 
 function normalizePage<T>(payload: PagedResponse<T> | T[], page: number): PagedResponse<T> {
@@ -174,12 +257,13 @@ function resultLabel(result: CashResult) {
   if (["balanced", "without_difference", "no_difference"].includes(result)) return "Sin diferencia";
   if (["surplus", "overage"].includes(result)) return "Con sobrante";
   if (["shortage", "missing"].includes(result)) return "Con faltante";
+  if (result === "mixed") return "Con diferencias por método";
   return result.replaceAll("_", " ");
 }
 
 function resultTone(result: CashResult) {
   if (["surplus", "overage"].includes(result)) return "surplus";
-  if (["shortage", "missing"].includes(result)) return "shortage";
+  if (["shortage", "missing", "mixed"].includes(result)) return "shortage";
   return "balanced";
 }
 
@@ -192,7 +276,7 @@ function cutNumber(cut: CashCutSummary) {
 }
 
 function orderNumber(order: PendingOrder) {
-  return `#${order.order_number || order.number || order.id}`;
+  return order.folio != null ? `#${order.folio}` : "Pedido sin folio";
 }
 
 function buildCutQuery(branchId: number, page: number, filters: CutFilters) {
@@ -204,12 +288,14 @@ function buildCutQuery(branchId: number, page: number, filters: CutFilters) {
   if (filters.dateFrom) params.set("date_from", filters.dateFrom);
   if (filters.dateTo) params.set("date_to", filters.dateTo);
   if (filters.registerId) params.set("register_id", filters.registerId);
-  if (filters.result) params.set("result", filters.result);
+  if (filters.result === "discrepancy") params.set("has_discrepancy", "true");
+  else if (filters.result) params.set("reconciliation_status", filters.result);
   return params.toString();
 }
 
-function ResultBadge({ result }: { result: CashResult }) {
-  return <span className={`cash-result cash-result-${resultTone(result)}`}>{resultLabel(result)}</span>;
+function ResultBadge({ result, discrepancy }: { result: CashResult; discrepancy?: boolean }) {
+  const label = discrepancy && resultTone(result) === "balanced" ? "Con diferencias por método" : resultLabel(result);
+  return <span className={`cash-result cash-result-${discrepancy && resultTone(result) === "balanced" ? "shortage" : resultTone(result)}`}>{label}</span>;
 }
 
 function Pagination({ page, total, onPage }: { page: number; total: number; onPage: (page: number) => void }) {
@@ -304,28 +390,32 @@ function NewCutDrawer({
   onSaved: (detail: CashCutDetail) => void;
 }) {
   const titleId = useId();
-  const surfaceRef = useDialogSurface(onClose);
-  const [cashCounted, setCashCounted] = useState("0");
-  const [cardCounted, setCardCounted] = useState("0");
+  const operation = useCashIntent();
+  const close = () => { if (!operation.locked) onClose(); };
+  const surfaceRef = useDialogSurface(close);
+  const cashActive = preview.has_cash_activity ?? true;
+  const [cashCounted, setCashCounted] = useState(cashActive ? "" : "0");
+  const [cardCounted, setCardCounted] = useState(preview.has_card_activity ? "" : "0");
   const [retainedFund, setRetainedFund] = useState(String(preview.opening_fund || 0));
   const [includeNote, setIncludeNote] = useState(false);
   const [note, setNote] = useState("");
   const [ignorePending, setIgnorePending] = useState(false);
   const [denominations, setDenominations] = useState<CashDenominationCounts | null>(null);
   const [calculatorOpen, setCalculatorOpen] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const submittingRef = useRef(false);
-  const idempotencyKey = useRef(freshIdempotencyKey());
-
-  const cash = Math.max(0, Number(cashCounted) || 0);
-  const card = preview.has_card_activity ? Math.max(0, Number(cardCounted) || 0) : 0;
-  const fund = Math.max(0, Number(retainedFund) || 0);
+  const cash = Number(cashCounted);
+  const card = preview.has_card_activity ? Number(cardCounted) : 0;
+  const fund = Number(retainedFund);
+  const cashPending = cashActive && !cashCounted.trim();
+  const cardPending = preview.has_card_activity && !cardCounted.trim();
   const denominationTotal = denominations ? calculateDenominationTotal(denominations) : null;
   const pendingOrders = preview.pending_orders || [];
   const pendingOrderCount = preview.pending_order_count ?? pendingOrders.length;
 
   function validate() {
+    if (cashPending) return "Ingresa el efectivo contado. Si no hay efectivo, escribe 0.";
+    if (cardPending) return "Ingresa el monto contado en tarjeta. Si no hay cobros, escribe 0.";
+    if ([cash, card, fund].some((value) => !Number.isFinite(value) || value < 0)) return "Los montos deben ser números iguales o mayores que cero.";
     if (fund > cash) return "El fondo de caja no puede ser mayor que el efectivo contado.";
     if (denominationTotal != null && Math.abs(denominationTotal - cash) > 0.005) {
       return `La calculadora suma ${formatMoney(denominationTotal)} y debe coincidir con el efectivo contado.`;
@@ -338,20 +428,16 @@ function NewCutDrawer({
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (submittingRef.current) return;
+    if (operation.busy) return;
     const validation = validate();
     if (validation) {
       setFormError(validation);
       return;
     }
-    submittingRef.current = true;
-    setSubmitting(true);
     setFormError(null);
     try {
-      const detail = await api<CashCutDetail>(`/cash/registers/${preview.register.id}/cuts`, {
-        method: "POST",
-        idempotencyKey: idempotencyKey.current,
-        body: JSON.stringify({
+      const detail = await operation.send<CashCutDetail>(`/cash/registers/${preview.register.id}/cuts`, {
+          expected_session_id: preview.session_id,
           expected_version: preview.version,
           cash_counted: cash,
           card_counted: card,
@@ -359,20 +445,16 @@ function NewCutDrawer({
           denominations,
           note: includeNote && note.trim() ? note.trim() : null,
           ignore_pending_orders: ignorePending,
-        }),
       });
-      onSaved(detail);
+      if (detail) onSaved(detail);
     } catch (caught) {
       setFormError(cashErrorMessage(caught));
-    } finally {
-      submittingRef.current = false;
-      setSubmitting(false);
     }
   }
 
   return (
     <DialogPortal>
-      <div className="cash-drawer-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && !calculatorOpen && onClose()}>
+      <div className="cash-drawer-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && !calculatorOpen && close()}>
         <aside
           ref={surfaceRef}
           className="cash-cut-drawer"
@@ -385,10 +467,11 @@ function NewCutDrawer({
         >
           <header className="cash-drawer-header">
             <h2 id={titleId}>Agregar un corte de caja</h2>
-            <button className="icon-button" type="button" aria-label="Cerrar corte de caja" onClick={onClose}><X /></button>
+            <button className="icon-button" type="button" aria-label="Cerrar corte de caja" disabled={operation.locked} onClick={close}><X /></button>
           </header>
           <form className="cash-cut-form" onSubmit={(event) => void submit(event)}>
             <div className="cash-cut-fields">
+              <fieldset disabled={operation.locked} className="cash-operation-fields">
               {pendingOrderCount > 0 && (
                 <div className="cash-pending-alert" role="alert">
                   <AlertCircle />
@@ -424,6 +507,8 @@ function NewCutDrawer({
                       type="number"
                       aria-label="Monto en efectivo"
                       min="0"
+                      required={cashActive}
+                      disabled={!cashActive}
                       step="0.01"
                       inputMode="decimal"
                       value={cashCounted}
@@ -432,12 +517,13 @@ function NewCutDrawer({
                         if (denominations) setDenominations(null);
                       }}
                     />
-                    <button type="button" onClick={() => setCalculatorOpen(true)}><Banknote /> Contar efectivo</button>
+                    <button type="button" disabled={!cashActive} onClick={() => setCalculatorOpen(true)}><Banknote /> Contar efectivo</button>
                   </div>
                   <small>Ingresa la cantidad total que hay en efectivo.</small>
+                  {!cashActive && <small>No hay movimientos de efectivo que contabilizar.</small>}
                 </label>
                 <label>Monto de pagos en tarjeta
-                  <div className="cash-prefix-input"><span>S/</span><input aria-label="Monto de pagos en tarjeta" type="number" min="0" step="0.01" inputMode="decimal" disabled={!preview.has_card_activity} value={cardCounted} onChange={(event) => setCardCounted(event.target.value)} /></div>
+                  <div className="cash-prefix-input"><span>S/</span><input aria-label="Monto de pagos en tarjeta" type="number" min="0" step="0.01" required={preview.has_card_activity} inputMode="decimal" disabled={!preview.has_card_activity} value={cardCounted} onChange={(event) => setCardCounted(event.target.value)} /></div>
                   {!preview.has_card_activity && <small>No hay movimientos con tarjeta que contabilizar.</small>}
                 </label>
               </section>
@@ -456,6 +542,7 @@ function NewCutDrawer({
                 </label>
                 {includeNote && <label>Detalle de la nota<textarea rows={4} value={note} onChange={(event) => setNote(event.target.value)} /></label>}
               </section>
+              </fieldset>
             </div>
 
             <aside className="cash-blind-summary" aria-label="Resumen del conteo">
@@ -466,22 +553,22 @@ function NewCutDrawer({
                   : " desde el primer movimiento en esta caja"}.
               </p>
               <dl>
-                <div><dt>Efectivo contado</dt><dd>{formatMoney(cash)}</dd></div>
-                <div><dt>Tarjeta contada</dt><dd>{formatMoney(card)}</dd></div>
+                <div><dt>Efectivo contado</dt><dd>{cashPending ? "Pendiente" : formatMoney(cash)}</dd></div>
+                <div><dt>Tarjeta contada</dt><dd>{cardPending ? "Pendiente" : formatMoney(card)}</dd></div>
                 <div><dt>Transferencias</dt><dd>{formatMoney(preview.transfer_expected_amount)}</dd></div>
               </dl>
               <div className="cash-summary-totals">
                 <span>Fondo de caja <strong>{formatMoney(fund)}</strong></span>
-                <span>Efectivo a retirar <strong>{formatMoney(Math.max(0, cash - fund))}</strong></span>
+                <span>Efectivo a retirar <strong>{cashPending ? "Pendiente" : formatMoney(Math.max(0, cash - fund))}</strong></span>
               </div>
               <small>Los montos esperados de efectivo y tarjeta se mostrarán después de guardar el corte.</small>
             </aside>
 
             <footer className="cash-drawer-footer">
-              <div aria-live="assertive">{formError && <p className="cash-form-error" role="alert"><AlertCircle /> {formError}</p>}</div>
+              <div aria-live="assertive">{formError && <p className="cash-form-error" role="alert"><AlertCircle /> {formError}</p>}{operation.uncertain && <p className="cash-form-error">El resultado está pendiente de confirmar. Reintenta la misma operación antes de salir.</p>}</div>
               <div>
-                <button className="button button-secondary" type="button" disabled={submitting} onClick={onClose}>Cancelar</button>
-                <button className="button button-primary" type="submit" disabled={submitting}>{submitting ? "Guardando..." : "Guardar"}</button>
+                <button className="button button-secondary" type="button" disabled={operation.locked} onClick={close}>Cancelar</button>
+                <button className="button button-primary" type="submit" disabled={operation.busy}>{operation.busy ? "Guardando..." : operation.uncertain ? "Reintentar mismo corte" : "Guardar"}</button>
               </div>
             </footer>
           </form>
@@ -517,7 +604,7 @@ function CutDetailModal({ detail, timezone, onClose }: { detail: CashCutDetail; 
             <h3>{cutNumber(detail)} en {registerName(detail)}</h3>
             <p>Realizado por {detail.created_by || "el equipo"}</p>
           </div>
-          <ResultBadge result={detail.result} />
+          <ResultBadge result={detail.reconciliation_status || detail.result} discrepancy={detail.has_discrepancy} />
         </header>
 
         <dl className="cash-detail-fund">
@@ -541,15 +628,24 @@ function CutDetailModal({ detail, timezone, onClose }: { detail: CashCutDetail; 
                   <span><ChevronDown /> {group.label}</span>
                   <span>{group.counted == null ? "-" : formatMoney(group.counted)}</span>
                   <span>{formatMoney(group.expected)}</span>
-                  <span>{group.difference == null ? "-" : <b className={group.difference < 0 ? "negative" : group.difference > 0 ? "positive" : ""}>{group.difference > 0 ? "+" : ""}{formatMoney(group.difference)}</b>}</span>
+                  <span>{group.difference == null ? "-" : group.difference === 0 ? <b className="cash-method-balanced">Sin diferencia</b> : <b className={group.difference < 0 ? "negative" : "positive"}>{group.difference > 0 ? "+" : ""}{formatMoney(group.difference)}</b>}</span>
                 </button>
                 <div id={transactionsId} className={`cash-method-transactions${isOpen ? " is-open" : ""}`}>
-                  {group.transactions.length ? group.transactions.map((transaction) => (
-                    <div key={transaction.id}>
-                      <span>{transaction.order_number ? `Pedido #${transaction.order_number}` : transaction.reference || transaction.note || "Movimiento"}<small>{formatDateTime(transaction.created_at, timezone)}</small></span>
-                      <strong>{formatMoney(transaction.amount)}</strong>
-                    </div>
-                  )) : <p>No hay transacciones en este método.</p>}
+                  {group.key === "cash" && detail.opening_amount !== undefined && <div className="cash-opening-fund"><span>Fondo de caja anterior{detail.previous_session_id ? ` (corte #${detail.previous_session_id})` : ""}</span><strong>{formatMoney(detail.opening_amount)}</strong></div>}
+                  {(["payment", "refund", "income", "withdrawal", "expense", "movement"] as const).map((kind) => {
+                    const entries = group.transactions.filter((transaction) => transactionGroup(transaction) === kind);
+                    if (!entries.length) return null;
+                    const categoryLabel = { payment: `Cobros en ${group.label.toLocaleLowerCase("es-PE")}`, refund: `Reembolsos en ${group.label.toLocaleLowerCase("es-PE")}`, income: "Entradas de efectivo", withdrawal: "Retiros de efectivo", expense: "Gastos en efectivo", movement: "Movimientos históricos" }[kind];
+                    const subtotal = entries.reduce((total, transaction) => total + Math.round(signedTransactionAmount(transaction) * 100), 0) / 100;
+                    return <section className="cash-transaction-category" key={kind}><h4><span>{categoryLabel} ({entries.length})</span><strong className={subtotal < 0 ? "cash-amount-out" : undefined}>{formatMoney(subtotal)}</strong></h4>{entries.map((transaction) => (
+                      <div key={`${transaction.kind || kind}:${transaction.id}`}>
+                        <span>{transaction.order_folio != null ? `Pedido #${transaction.order_folio}` : transaction.order_id || transaction.order_number ? "Pedido sin folio" : transaction.reference || transaction.note || "Movimiento"}<small>{formatDateTime(transaction.created_at, timezone)}{transaction.method && group.key === "transfer" ? ` · ${methodLabel(transaction.method)}` : ""}</small></span>
+                        <strong className={signedTransactionAmount(transaction) < 0 ? "cash-amount-out" : undefined}>{formatMoney(signedTransactionAmount(transaction))}</strong>
+                      </div>
+                    ))}</section>;
+                  })}
+                  {!group.transactions.length && !(group.key === "cash" && detail.opening_amount !== undefined) && <p>No hay transacciones en este método.</p>}
+                  <div className="cash-method-expected"><span>Monto esperado</span><strong>{formatMoney(group.expected)}</strong></div>
                 </div>
               </div>
             );
@@ -569,19 +665,19 @@ function CutDetailModal({ detail, timezone, onClose }: { detail: CashCutDetail; 
   );
 }
 
-function MovementDialog({ register, expectedVersion, onClose, onSaved }: { register: CashRegister; expectedVersion: number; onClose: () => void; onSaved: () => void }) {
+function MovementDialog({ preview, onClose, onSaved }: { preview: CashCutPreview; onClose: () => void; onSaved: () => void }) {
+  const register = preview.register;
   const [movementType, setMovementType] = useState<"income" | "withdrawal">("income");
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
-  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const submittingRef = useRef(false);
-  const idempotencyKey = useRef(freshIdempotencyKey());
+  const operation = useCashIntent();
+  const close = () => { if (!operation.locked) onClose(); };
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (submittingRef.current) return;
-    if ((Number(amount) || 0) <= 0) {
+    if (operation.busy) return;
+    if (!Number.isFinite(Number(amount)) || (Number(amount) || 0) <= 0) {
       setError("Ingresa una cantidad mayor que cero.");
       return;
     }
@@ -589,32 +685,25 @@ function MovementDialog({ register, expectedVersion, onClose, onSaved }: { regis
       setError("Explica el motivo de este movimiento.");
       return;
     }
-    submittingRef.current = true;
-    setSubmitting(true);
     setError(null);
     try {
-      await api(`/cash/registers/${register.id}/movements`, {
-        method: "POST",
-        idempotencyKey: idempotencyKey.current,
-        body: JSON.stringify({
+      const saved = await operation.send(`/cash/registers/${register.id}/movements`, {
           movement_type: movementType,
           amount: Number(amount),
           note: note.trim(),
-          expected_version: expectedVersion,
-        }),
+          expected_version: preview.version,
+          expected_session_id: preview.session_id,
       });
-      onSaved();
+      if (saved) onSaved();
     } catch (caught) {
       setError(cashErrorMessage(caught));
-    } finally {
-      submittingRef.current = false;
-      setSubmitting(false);
     }
   }
 
   return (
-    <Modal title="Agrega un movimiento" className="cash-movement-modal" onClose={onClose}>
+    <Modal title="Agrega un movimiento" className="cash-movement-modal" onClose={close}>
       <form className="cash-movement-form" onSubmit={(event) => void submit(event)}>
+        <fieldset disabled={operation.locked} className="cash-operation-fields">
         <label>Caja<select disabled value={register.id}><option value={register.id}>{register.name}</option></select></label>
         <label>Tipo de movimiento
           <select value={movementType} onChange={(event) => setMovementType(event.target.value as "income" | "withdrawal")}>
@@ -624,10 +713,12 @@ function MovementDialog({ register, expectedVersion, onClose, onSaved }: { regis
         </label>
         <label>Cantidad<div className="cash-prefix-input"><span>S/</span><input aria-label="Cantidad" type="number" min="0.01" step="0.01" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} /></div></label>
         <label>Motivo<small>Explica la razón de este movimiento.</small><textarea aria-label="Motivo" rows={4} value={note} onChange={(event) => setNote(event.target.value)} /></label>
+        </fieldset>
         {error && <p className="cash-form-error" role="alert"><AlertCircle /> {error}</p>}
+        {operation.uncertain && <p className="cash-form-error">El resultado está pendiente de confirmar. Reintenta el mismo movimiento antes de salir.</p>}
         <footer>
-          <button className="button button-secondary" type="button" disabled={submitting} onClick={onClose}>Cancelar</button>
-          <button className="button button-primary" type="submit" disabled={submitting}>{submitting ? "Confirmando..." : "Confirmar"}</button>
+          <button className="button button-secondary" type="button" disabled={operation.locked} onClick={close}>Cancelar</button>
+          <button className="button button-primary" type="submit" disabled={operation.busy}>{operation.busy ? "Confirmando..." : operation.uncertain ? "Reintentar mismo movimiento" : "Confirmar"}</button>
         </footer>
       </form>
     </Modal>
@@ -644,6 +735,7 @@ function CashWorkspaceContent() {
   const invalidMovementTarget = hasMovementTarget && (!routeRegisterId || !routeMovementId);
   const [activeTab, setActiveTab] = useState<CashTab>(() => routeParams.get("tab") === "movements" || hasMovementTarget ? "movements" : "cuts");
   const [registers, setRegisters] = useState<CashRegister[]>([]);
+  const [selectedRegisterId, setSelectedRegisterId] = useState<number | null>(null);
   const [preview, setPreview] = useState<CashCutPreview | null>(null);
   const [cuts, setCuts] = useState<PagedResponse<CashCutSummary>>({ items: [], total: 0, page: 1, page_size: PAGE_SIZE });
   const [latestCut, setLatestCut] = useState<CashCutSummary | null>(null);
@@ -664,7 +756,11 @@ function CashWorkspaceContent() {
   const [openingCut, setOpeningCut] = useState(false);
   const [detail, setDetail] = useState<CashCutDetail | null>(null);
   const [loadingDetailId, setLoadingDetailId] = useState<number | null>(null);
-  const [movementOpen, setMovementOpen] = useState(false);
+  const [movementPreview, setMovementPreview] = useState<CashCutPreview | null>(null);
+  const [openingMovement, setOpeningMovement] = useState(false);
+  const [movementTotals, setMovementTotals] = useState<MovementTotals | null>(null);
+  const [movementPeriodId, setMovementPeriodId] = useState<number | null>(null);
+  const [movementPeriod, setMovementPeriod] = useState("current");
   const [toast, setToast] = useState<ToastState>(null);
   const cutReturnFocusRef = useRef<HTMLElement | null>(null);
   const detailReturnFocusRef = useRef<HTMLElement | null>(null);
@@ -677,15 +773,27 @@ function CashWorkspaceContent() {
   const cutTableHintId = `${tabId}-cut-table-hint`;
   const movementTableHintId = `${tabId}-movement-table-hint`;
 
-  const primaryRegister = registers.find((register) => register.active && register.is_default)
+  const primaryRegister = registers.find((register) => register.active && register.id === selectedRegisterId)
+    || registers.find((register) => register.active && register.is_default)
     || registers.find((register) => register.active)
     || null;
   const branchId = branch?.id;
   const primaryRegisterId = primaryRegister?.id;
   const movementRegisterId = hasMovementTarget ? routeRegisterId : primaryRegisterId;
-  const movementScope = `${branchId}:${movementRegisterId}:${routeMovementId}:${movementPage}`;
+  const movementScope = `${branchId}:${movementRegisterId}:${routeMovementId}:${movementPeriod}:${movementPage}`;
   const [loadedMovementScope, setLoadedMovementScope] = useState("");
   const timezone = context?.business.timezone || "America/Lima";
+
+  useEffect(() => {
+    setLatestCut(null);
+    setCuts({ items: [], total: 0, page: 1, page_size: PAGE_SIZE });
+    setLoadingCuts(true);
+    setCutPage(1);
+    setMovementPage(1);
+    setPreview(null);
+    setMovementTotals(null);
+    setMovementPeriodId(null);
+  }, [primaryRegisterId]);
 
   useEffect(() => {
     setMovementPage(1);
@@ -700,6 +808,7 @@ function CashWorkspaceContent() {
       .then((data) => {
         if (cancelled) return;
         setRegisters(data);
+        if (!data.some((register) => register.active)) setLoadingCuts(false);
         setLoadError(null);
       })
       .catch((caught) => {
@@ -733,15 +842,16 @@ function CashWorkspaceContent() {
   }, [primaryRegisterId, reloadToken]);
 
   useEffect(() => {
-    if (!branchId) return;
+    if (!branchId || !primaryRegisterId) return;
     let cancelled = false;
     setLoadingCuts(true);
-    api<PagedResponse<CashCutSummary> | CashCutSummary[]>(`/cash/cuts?${buildCutQuery(branchId, cutPage, filters)}`)
+    const scopedFilters = { ...filters, registerId: filters.registerId || String(primaryRegisterId || "") };
+    api<PagedResponse<CashCutSummary> | CashCutSummary[]>(`/cash/cuts?${buildCutQuery(branchId, cutPage, scopedFilters)}`)
       .then((data) => {
         if (!cancelled) {
           const normalized = normalizePage(data, cutPage);
           setCuts(normalized);
-          if (cutPage === 1 && !filters.dateFrom && !filters.dateTo && !filters.registerId && !filters.result) {
+          if (cutPage === 1 && !filters.dateFrom && !filters.dateTo && !filters.result) {
             setLatestCut(normalized.items[0] || null);
           }
           setLoadError(null);
@@ -754,7 +864,7 @@ function CashWorkspaceContent() {
         if (!cancelled) setLoadingCuts(false);
       });
     return () => { cancelled = true; };
-  }, [branchId, cutPage, filters, reloadToken]);
+  }, [branchId, primaryRegisterId, cutPage, filters, reloadToken]);
 
   useEffect(() => {
     if (activeTab !== "movements" || !movementRegisterId || invalidMovementTarget) return;
@@ -763,13 +873,16 @@ function CashWorkspaceContent() {
     setMovementError(null);
     const query = new URLSearchParams({ page: String(movementPage), page_size: String(PAGE_SIZE), branch_id: String(branchId) });
     if (routeMovementId) query.set("movement_id", String(routeMovementId));
-    api<(PagedResponse<CashMovement> & { branch_id?: number; register?: { name?: string } }) | CashMovement[]>(`/cash/registers/${movementRegisterId}/movements?${query}`)
+    if (!hasMovementTarget && movementPeriod === "current") query.set("current_period", "true");
+    api<MovementResponse | CashMovement[]>(`/cash/registers/${movementRegisterId}/movements?${query}`)
       .then((data) => {
         if (!cancelled) {
           if (hasMovementTarget && (Array.isArray(data) || data.branch_id !== branchId || data.items.some((item) => item.id !== routeMovementId || item.register_id !== movementRegisterId))) throw new Error("No se pudo verificar el movimiento en la sucursal actual. Actualiza la API e inténtalo nuevamente.");
           setMovements(normalizePage(data, movementPage));
           setLoadedMovementScope(movementScope);
           setMovementRegisterName(!Array.isArray(data) ? data.register?.name || null : null);
+          setMovementTotals(!Array.isArray(data) ? data.summary || null : null);
+          setMovementPeriodId(!Array.isArray(data) ? data.session_id ?? null : null);
         }
       })
       .catch((caught) => {
@@ -779,7 +892,7 @@ function CashWorkspaceContent() {
         if (!cancelled) setLoadingMovements(false);
       });
     return () => { cancelled = true; };
-  }, [activeTab, movementRegisterId, routeMovementId, hasMovementTarget, invalidMovementTarget, branchId, movementPage, movementScope, reloadToken]);
+  }, [activeTab, movementRegisterId, routeMovementId, hasMovementTarget, invalidMovementTarget, branchId, movementPeriod, movementPage, movementScope, reloadToken]);
 
   function refresh() {
     setReloadToken((value) => value + 1);
@@ -798,6 +911,18 @@ function CashWorkspaceContent() {
     } finally {
       setOpeningCut(false);
     }
+  }
+
+  async function openMovement() {
+    if (!primaryRegister || openingMovement) return;
+    setOpeningMovement(true);
+    try {
+      const currentPreview = await api<CashCutPreview>(`/cash/registers/${primaryRegister.id}/cut-preview`);
+      setPreview(currentPreview);
+      setMovementPreview(currentPreview);
+    } catch (caught) {
+      setToast({ message: cashErrorMessage(caught), tone: "error" });
+    } finally { setOpeningMovement(false); }
   }
 
   function closeCutDrawer() {
@@ -866,6 +991,7 @@ function CashWorkspaceContent() {
           <button ref={(node) => { tabRefs.current.movements = node; }} id={movementsTabId} role="tab" type="button" aria-controls={movementsPanelId} aria-selected={activeTab === "movements"} tabIndex={activeTab === "movements" ? 0 : -1} onClick={() => selectTab("movements")} onKeyDown={handleTabKeyDown}>Entradas y retiros de efectivo</button>
         </div>
       </header>
+      {!hasMovementTarget && <label className="cash-register-picker">Caja<select value={primaryRegisterId || ""} disabled={Boolean(cutDrawerPreview || movementPreview || openingCut || openingMovement)} onChange={(event) => { setSelectedRegisterId(Number(event.target.value)); setFilters(emptyFilters); }}>{registers.filter((register) => register.active).map((register) => <option key={register.id} value={register.id}>{register.name}</option>)}</select></label>}
 
       {activeTab === "cuts" ? (
         <main id={cutsPanelId} className="cash-surface" role="tabpanel" aria-labelledby={cutsTabId} tabIndex={0}>
@@ -898,8 +1024,7 @@ function CashWorkspaceContent() {
                   <div className="cash-filters">
                     <label>Desde<input type="date" value={filters.dateFrom} onChange={(event) => { setCutPage(1); setFilters((current) => ({ ...current, dateFrom: event.target.value })); }} /></label>
                     <label>Hasta<input type="date" value={filters.dateTo} onChange={(event) => { setCutPage(1); setFilters((current) => ({ ...current, dateTo: event.target.value })); }} /></label>
-                    <label>Caja<select value={filters.registerId} onChange={(event) => { setCutPage(1); setFilters((current) => ({ ...current, registerId: event.target.value })); }}><option value="">Todas</option>{registers.map((register) => <option key={register.id} value={register.id}>{register.name}</option>)}</select></label>
-                    <label>Resultado<select value={filters.result} onChange={(event) => { setCutPage(1); setFilters((current) => ({ ...current, result: event.target.value })); }}><option value="">Todos</option><option value="balanced">Sin diferencia</option><option value="surplus">Con sobrante</option><option value="shortage">Con faltante</option></select></label>
+                    <label>Resultado<select value={filters.result} onChange={(event) => { setCutPage(1); setFilters((current) => ({ ...current, result: event.target.value })); }}><option value="">Todos</option><option value="balanced">Sin diferencia</option><option value="discrepancy">Con cualquier diferencia</option><option value="surplus">Con sobrante</option><option value="shortage">Con faltante</option><option value="mixed">Con diferencias por método</option></select></label>
                     <button className="button button-ghost" type="button" onClick={() => { setCutPage(1); setFilters(emptyFilters); }}>Limpiar</button>
                   </div>
                 )}
@@ -915,7 +1040,7 @@ function CashWorkspaceContent() {
                           <td data-label="Fecha">{formatDateTime(cut.closed_at, timezone)}</td>
                           <td data-label="Caja">{registerName(cut)}</td>
                           <td data-label="Creado por">{cut.created_by || "Equipo"}</td>
-                          <td data-label="Resultado"><ResultBadge result={cut.result} /></td>
+                          <td data-label="Resultado"><ResultBadge result={cut.reconciliation_status || cut.result} discrepancy={cut.has_discrepancy} /></td>
                           <td data-label="Total esperado"><Money value={cut.total_expected_amount} /></td>
                         </tr>
                       ))}
@@ -932,8 +1057,9 @@ function CashWorkspaceContent() {
         <main id={movementsPanelId} className="cash-surface" role="tabpanel" aria-labelledby={movementsTabId} tabIndex={0}>
           <div className="cash-primary-action cash-movement-action">
             <div><h2>Movimientos de efectivo</h2><p>Registra entradas y retiros para mantener exacto el próximo corte.</p></div>
-            {!hasMovementTarget && <button className="button button-primary" type="button" disabled={!primaryRegister} onClick={() => setMovementOpen(true)}><Plus /> Agregar movimiento</button>}
+            {!hasMovementTarget && <button className="button button-primary" type="button" disabled={!primaryRegister || openingMovement} onClick={() => void openMovement()}><Plus /> {openingMovement ? "Preparando..." : "Agregar movimiento"}</button>}
           </div>
+          {!hasMovementTarget && <div className="cash-period-controls"><label>Período<select value={movementPeriod} onChange={(event) => { setMovementPeriod(event.target.value); setMovementPage(1); }}><option value="current">Corte actual</option><option value="all">Todo el historial</option></select></label>{movementPeriod === "current" && movementPeriodId != null && <span>Período #{movementPeriodId}</span>}{movementTotals && loadedMovementScope === movementScope && <dl className="cash-movement-totals"><div><dt>Total de entradas</dt><dd>{formatMoney(movementTotals.income_amount)}</dd></div><div><dt>Total de retiros</dt><dd>{formatMoney(movementTotals.withdrawal_amount + movementTotals.expense_amount)}</dd></div>{movementTotals.refund_amount > 0 && <div><dt>Total de reembolsos</dt><dd>{formatMoney(movementTotals.refund_amount)}</dd></div>}</dl>}</div>}
           <section className="cash-history panel">
             {hasMovementTarget && <div className="cash-movement-target"><strong>Movimiento {routeMovementId ? `#${routeMovementId}` : "no válido"}</strong><button type="button" className="button button-secondary" onClick={() => { const next = new URLSearchParams(routeParams); next.delete("movement_id"); next.delete("register_id"); setMovementPage(1); setRouteParams(next, { replace: true, state: location.state }); }}>Quitar filtro</button></div>}
             {invalidMovementTarget ? <ErrorState message="El enlace del movimiento no es válido." /> : movementError && <ErrorState message={movementError} onRetry={refresh} />}
@@ -947,8 +1073,8 @@ function CashWorkspaceContent() {
                       <tr key={movement.id}>
                         <td data-label="Fecha"><span className="cash-movement-reference">#{movement.id}</span>{formatDateTime(movement.created_at, timezone)}</td>
                         <td data-label="Caja">{movementRegisterName || registers.find((register) => register.id === movementRegisterId)?.name || `Caja #${movementRegisterId}`}</td>
-                        <td data-label="Tipo"><span className={`cash-movement-type ${movement.movement_type === "withdrawal" ? "withdrawal" : "income"}`}>{movement.movement_type === "withdrawal" ? <ArrowUpRight /> : <ArrowDownLeft />}{movement.movement_type === "withdrawal" ? "Retiro" : "Entrada"}</span></td>
-                        <td data-label="Cantidad"><strong><Money value={movement.amount} /></strong></td>
+                        <td data-label="Tipo"><span className={`cash-movement-type ${movement.movement_type === "income" ? "income" : "withdrawal"}`}>{movement.movement_type === "income" ? <ArrowDownLeft /> : <ArrowUpRight />}{({ income: "Entrada", withdrawal: "Retiro", expense: "Gasto", refund: "Reembolso" } as Record<string, string>)[movement.movement_type] || "Movimiento histórico"}</span>{movement.movement_type === "refund" && <small className="cash-refund-method">{methodLabel(movement.method || movement.payment_method)}</small>}</td>
+                        <td data-label="Cantidad"><strong><Money value={movement.signed_amount ?? (["withdrawal", "expense", "refund"].includes(movement.movement_type) ? -Math.abs(movement.amount) : movement.amount)} /></strong></td>
                         <td data-label="Motivo">{movement.note || "Sin motivo"}</td>
                         <td data-label="Registrado por">{movement.created_by || "Equipo"}</td>
                       </tr>
@@ -984,13 +1110,12 @@ function CashWorkspaceContent() {
         />
       )}
       {detail && <CutDetailModal detail={detail} timezone={timezone} onClose={closeDetail} />}
-      {movementOpen && primaryRegister && (
+      {movementPreview && (
         <MovementDialog
-          register={primaryRegister}
-          expectedVersion={preview?.version ?? 0}
-          onClose={() => setMovementOpen(false)}
+          preview={movementPreview}
+          onClose={() => setMovementPreview(null)}
           onSaved={() => {
-            setMovementOpen(false);
+            setMovementPreview(null);
             setToast({ message: "Movimiento de efectivo registrado.", tone: "success" });
             refresh();
           }}
@@ -1002,6 +1127,6 @@ function CashWorkspaceContent() {
 }
 
 export function CashWorkspace() {
-  const { branch } = useTenant();
-  return <CashWorkspaceContent key={branch?.id ?? "no-branch"} />;
+  const { branch, context } = useTenant();
+  return <CashWorkspaceContent key={JSON.stringify([context?.business.id, branch?.id, context?.role, context?.roles])} />;
 }

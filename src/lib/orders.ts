@@ -18,6 +18,8 @@ type WrappedOrderDetailApiResponse = {
   edit_policy?: OrderDetail["edit_policy"];
   order: Order;
   payments?: OrderPayment[];
+  refunds?: OrderDetail["refunds"];
+  financial_summary?: OrderDetail["financial_summary"];
   payment_evidence?: PaymentEvidence[];
   payment_requests?: OrderDetail["payment_requests"];
   tickets?: KitchenTicket[];
@@ -31,6 +33,8 @@ type LegacyOrderDetailApiResponse = Order & {
   table_context?: OrderDetail["table_context"];
   cancellation_reason?: string | null;
   payments?: OrderPayment[];
+  refunds?: OrderDetail["refunds"];
+  financial_summary?: OrderDetail["financial_summary"];
   payment_evidence?: PaymentEvidence | PaymentEvidence[] | null;
   payment_requests?: OrderDetail["payment_requests"];
   kitchen_tickets?: KitchenTicket[];
@@ -221,6 +225,8 @@ export function normalizeOrderDetailResponse(response: OrderDetailApiResponse): 
     cancellation_reason: response.cancellation_reason,
     edit_policy: wrapped ? response.edit_policy : undefined,
     payments,
+    refunds: response.refunds ?? [],
+    financial_summary: response.financial_summary,
     payment_evidence: latestEvidence(evidence),
     payment_evidences: evidence,
     payment_requests: response.payment_requests || [],

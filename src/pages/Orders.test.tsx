@@ -25,6 +25,14 @@ function mockReads({ available = false, detail = (id: number) => order(id / 700)
     if (url.pathname === "/tables") return [{ ...table(branchId), ...(available ? { status: "available", active_order_id: null } : {}) }];
     const match = url.pathname.match(/^\/orders\/(\d+)\/detail$/);
     if (match) return detail(Number(match[1]));
+    const cancellation = url.pathname.match(/^\/orders\/(\d+)\/cancellation-preview$/);
+    if (cancellation) {
+      const saved = await detail(Number(cancellation[1]));
+      return { order_id: saved.id, branch_id: saved.branch_id, order_version: saved.version, can_cancel: true, can_refund: true, reason: null,
+        refundable_amount: saved.paid_amount, financial_summary: { collected: saved.paid_amount, refunded: 0, net_collected: saved.paid_amount, refundable: saved.paid_amount, status: saved.payment_status },
+        refund_methods: ["cash", "card", "transfer"], registers: [{ id: 5, name: "Principal", version: 1, session_id: 8, session_version: 3 }],
+      };
+    }
     throw new Error(`Unexpected read ${path}`);
   };
 }
@@ -33,7 +41,9 @@ const app = () => <StrictMode><MemoryRouter><OrdersPage /></MemoryRouter></Stric
 async function requestCancellation() {
   fireEvent.click(screen.getByRole("button", { name: "Acciones de la mesa" }));
   fireEvent.click(await screen.findByRole("menuitem", { name: "Cancelar pedido" }));
-  return screen.findByRole("dialog", { name: "Cancelar pedido" });
+  const dialog = await screen.findByRole("dialog", { name: "Cancelar pedido" });
+  await within(dialog).findByLabelText("Motivo de cancelación");
+  return dialog;
 }
 async function openAccount(branchId = 1, available = false) {
   fireEvent.click(screen.getByRole("tab", { name: "Panel de mesas" }));
@@ -123,7 +133,7 @@ describe("order detail actions and dismissal", () => {
     expect(screen.getByRole("menuitem", { name: "Revisar impresión automática" })).toBeEnabled();
     fireEvent.click(screen.getByRole("menuitem", { name: "Cancelar pedido" }));
     const cancellation = await screen.findByRole("dialog", { name: "Cancelar pedido" });
-    expect(within(cancellation).getByRole("button", { name: "Confirmar cancelación" })).toBeDisabled();
+    expect(await within(cancellation).findByRole("button", { name: "Confirmar cancelación" })).toBeDisabled();
     expect(writes()).toEqual([]);
   });
 
@@ -198,7 +208,7 @@ describe("table cancellation reason", () => {
         writes += 1;
         if (writes === 1) throw new Error("No se pudo guardar");
         cancelled = true;
-        return { ...order(1), status: "cancelled", version: 2 };
+        return { order: { ...order(1), status: "cancelled", version: 2 }, refunds: [], financial_summary: { collected: 0, refunded: 0, net_collected: 0, refundable: 0, status: "voided" } };
       }
       if (cancelled && path.startsWith("/orders/workspace")) throw new Error("Consulta temporalmente fuera de línea");
       return reads(path);
@@ -212,13 +222,13 @@ describe("table cancellation reason", () => {
     fireEvent.click(within(form).getByRole("button", { name: "Confirmar cancelación" }));
     expect(await within(form).findByRole("alert")).toHaveTextContent("No se pudo guardar");
     expect(within(form).getByLabelText("Motivo de cancelación")).toHaveValue("  El cliente se retiró  ");
-    fireEvent.click(within(form).getByRole("button", { name: "Confirmar cancelación" }));
+    fireEvent.click(within(form).getByRole("button", { name: "Reintentar cancelación" }));
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Cancelar pedido" })).toBeNull());
     expect(screen.queryByRole("dialog", { name: "Cuenta de Mesa 1" })).toBeNull();
     expect(screen.getByRole("status")).toHaveTextContent("Pedido cancelado");
     expect(writes).toBe(2);
     const payloads = vi.mocked(api).mock.calls.filter(([, options]) => options?.method === "POST").map(([, options]) => JSON.parse(String(options?.body)));
-    expect(payloads).toEqual([{ status: "cancelled", expected_version: 1, reason: "El cliente se retiró" }, { status: "cancelled", expected_version: 1, reason: "El cliente se retiró" }]);
+    expect(payloads).toEqual([{ expected_version: 1, reason: "El cliente se retiró", refunds: [], refund_confirmed: false }, { expected_version: 1, reason: "El cliente se retiró", refunds: [], refund_confirmed: false }]);
   });
 
   it("discards a cancellation response when the user changes branch", async () => {
@@ -233,7 +243,7 @@ describe("table cancellation reason", () => {
     tenant.branch = { id: 2 };
     view.rerender(app());
     await openAccount(2);
-    await act(async () => resolve({ ...order(1), status: "cancelled", version: 2 }));
+    await act(async () => resolve({ order: { ...order(1), status: "cancelled", version: 2 }, refunds: [], financial_summary: { collected: 0, refunded: 0, net_collected: 0, refundable: 0, status: "voided" } }));
     expect(screen.getByRole("dialog", { name: "Cuenta de Mesa 2" })).toBeVisible();
     expect(screen.queryByRole("dialog", { name: "Cancelar pedido" })).toBeNull();
     expect(screen.queryByText("Pedido cancelado y stock revertido.")).toBeNull();

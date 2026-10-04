@@ -203,6 +203,38 @@ body.pos-operational .cash-table-scroll-hint { display: none; }
 body.pos-operational :is(.cash-tabs, .cash-workspace-header) { border-color: var(--line); }
 body.pos-operational :is(.cash-input-action, .cash-money-field) { background: #fff; border-color: var(--line); border-radius: 7px; }
 body.pos-operational :is(.cash-cut-fields label, .cash-blind-summary, .cash-denomination-row, .cash-cut-print-sheet) { font-size: 1rem; }
+.cash-operation-fields { min-width: 0; margin: 0; padding: 0; border: 0; display: grid; gap: 14px; }
+.cash-register-picker { width: min(320px, 100%); display: grid; gap: 6px; }
+.cash-register-picker select, .cash-period-controls select { min-height: 44px; font-size: 1rem; }
+.cash-period-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; margin-bottom: 18px; }
+.cash-period-controls > label { display: grid; gap: 6px; min-width: 180px; }
+.cash-period-controls > span { color: var(--muted); }
+.cash-movement-totals { display: flex; flex-wrap: wrap; gap: 16px 32px; margin: 0; }
+.cash-movement-totals > div { display: grid; gap: 4px; }
+.cash-movement-totals dt { color: var(--muted); font-size: .875rem; }
+.cash-movement-totals dd { margin: 0; font-weight: 650; font-variant-numeric: tabular-nums; }
+.cash-transaction-category { padding-block: 12px; }
+.cash-transaction-category h4 { margin: 0 0 8px; font-size: .9375rem; font-weight: 650; }
+.cash-transaction-category h4 { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+body.pos-operational .cash-method-row b.cash-method-balanced { display: inline-block; padding: 2px 6px; border-radius: 999px; color: #206b42; background: #daf1e3; font-size: .75rem; }
+.cash-refund-method { display: block; margin-top: 4px; font-size: .875rem; color: var(--muted); }
+.cash-transaction-category > div { display: flex; justify-content: space-between; align-items: flex-start; min-height: 44px; gap: 16px; padding-block: 8px; }
+.cash-transaction-category > div > span { display: grid; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+.cash-transaction-category small { color: var(--muted); font-size: .875rem; }
+.cash-transaction-category strong { flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.cash-amount-out { color: #a22529; }
+.cash-method-transactions .cash-method-expected { font-weight: 650; }
+body.pos-operational .cash-method-transactions { padding: 8px 14px 12px; }
+body.pos-operational .cash-method-transactions > div > span, body.pos-operational .cash-method-transactions > div strong { font-size: .9375rem; }
+body.pos-operational .cash-operation-fields :is(input, select, textarea) { font-size: 1rem; }
+body.pos-operational :is(.cash-input-action, .cash-prefix-input) input,
+body.pos-operational :is(.cash-input-action, .cash-prefix-input) input:focus-visible { border: 0; outline: 0; box-shadow: none; }
+@media (max-width: 600px) {
+  .cash-period-controls { align-items: stretch; }
+  .cash-period-controls > label { width: 100%; }
+  .cash-movement-totals { width: 100%; gap: 14px 22px; }
+  .cash-register-picker { width: 100%; }
+}
 body.pos-operational .availability-workspace { --paper: #fff; --line: #e5e5e5; --muted: #666; --green-500: #35a167; --green-700: #25824f; }
 body.pos-operational .availability-card-toolbar { min-height: 60px; }
 body.pos-operational .availability-table th { height: 46px; }

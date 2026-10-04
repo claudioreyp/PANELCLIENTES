@@ -1,0 +1,41 @@
+.order-cancel-modal { width: min(620px, calc(100vw - 32px)); }
+.order-cancel-modal .form-stack { gap: 20px; }
+.order-cancel-modal .form-stack > p { margin: 0; }
+.order-cancel-modal fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+.order-cancel-modal legend { margin-bottom: 8px; font-weight: 600; }
+.order-refund-warning, .order-cancellation-notice { display: flex; gap: 12px; padding: 15px; border-radius: 8px; background: #fff1f0; color: #922b25; overflow-wrap: anywhere; }
+.order-refund-warning > svg, .order-cancellation-notice > svg { flex: 0 0 20px; width: 20px; height: 20px; margin-top: 2px; }
+.order-refund-warning strong, .order-cancellation-notice strong { display: block; }
+.order-refund-warning p, .order-cancellation-notice p { margin: 5px 0 0; white-space: pre-wrap; }
+.order-cancellation-notice { background: #fff7e8; color: #86491d; }
+.order-refund-options { display: grid; border: 1px solid var(--line, #e5e5e5); border-radius: 8px; overflow: hidden; }
+.order-refund-options > label { display: flex; align-items: center; gap: 10px; padding: 13px 15px; cursor: pointer; }
+.order-refund-options > label + label { border-top: 1px solid var(--line, #e5e5e5); }
+.order-refund-options > label:has(input:checked) { background: #eff8f2; }
+.order-refund-options input { width: 18px; height: 18px; margin: 0; }
+.order-refund-split { display: grid; gap: 12px; }
+.order-refund-split label { display: grid; grid-template-columns: minmax(0, 1fr) minmax(105px, 160px); align-items: center; gap: 14px; }
+.order-refund-attestation { display: flex !important; flex-direction: row !important; align-items: flex-start; gap: 10px; }
+.order-refund-attestation input { flex: 0 0 18px; width: 18px; height: 18px; margin-top: 3px; }
+.order-cancel-modal .order-cancel-error { color: #922b25; margin: 0; }
+.order-cancel-modal .order-cancel-recovery { padding: 12px; background: #fff7e8; color: #754b17; border-radius: 7px; }
+.order-cancel-modal .modal-form-actions { flex-wrap: wrap; }
+.order-cancel-modal .button-danger { color: #fff; background: #bd4038; }
+.order-cancel-modal :is(input, textarea, select)[aria-invalid="true"] { border-color: #bd4038; }
+.order-financials { font-variant-numeric: tabular-nums; }
+.order-financial-timeline { display: grid; }
+.order-financial-timeline > div { display: flex; justify-content: space-between; align-items: start; gap: 15px; padding-block: 12px; border-bottom: 1px solid var(--line, #e5e5e5); }
+.order-financial-timeline > div > div { min-width: 0; overflow-wrap: anywhere; }
+.order-financial-timeline strong { font-weight: 550; }
+.order-financial-timeline small { display: block; margin-top: 3px; color: var(--muted, #666); font-size: .875rem; }
+.order-financial-timeline time { flex-shrink: 0; color: var(--muted, #666); font-size: .875rem; }
+.order-financial-refund { color: #922b25; }
+.order-financial-warning { display: grid; gap: 5px; padding: 12px; margin: 8px 0; border-radius: 7px; color: #754b17; background: #fff7e8; }
+.historical-order-content .order-financials { padding: 0; margin-top: 20px; }
+.historical-order-content .order-financials header { padding-block: 14px; }
+@media (max-width: 600px) {
+  .order-cancel-modal { width: calc(100vw - 20px); }
+  .order-cancel-modal .modal-form-actions > button { flex: 1 1 auto; }
+  .order-financial-timeline > div { flex-wrap: wrap; gap: 4px; }
+  .order-refund-split label { grid-template-columns: minmax(0, 1fr) 120px; }
+}
