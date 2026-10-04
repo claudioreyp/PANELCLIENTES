@@ -92,7 +92,7 @@ function useRequestLifetime(path: string) {
     lifetimeRef.current = lifetime;
     return () => { lifetime.active = false; };
   }, [enabled, identity]);
-  return { key, identity, lifetimeRef, enabled };
+  return { key, scopeKey, identity, lifetimeRef, enabled };
 }
 
 function isCurrent(lifetime: RequestLifetime | null, identity: symbol, current: RequestLifetime | null): lifetime is RequestLifetime {
@@ -362,8 +362,10 @@ export type SettingsQuery<T> = {
   reload: (afterMutation?: boolean) => Promise<void>;
 };
 
-export function useSettingsQuery<T>(path: string, fallback: T): SettingsQuery<T> {
-  const { key, identity, lifetimeRef, enabled } = useRequestLifetime(path);
+export function useSettingsQuery<T>(path: string, fallback: T, options: { keepPreviousData?: boolean } = {}): SettingsQuery<T> {
+  const { key, scopeKey, identity, lifetimeRef, enabled } = useRequestLifetime(path);
+  const previousScope = useRef(scopeKey);
+  const keepPreviousData = Boolean(options.keepPreviousData);
   const fallbackRef = useRef(fallback);
   fallbackRef.current = fallback;
   const [state, setState] = useState(() => initialResource(key, fallback));
@@ -374,8 +376,17 @@ export function useSettingsQuery<T>(path: string, fallback: T): SettingsQuery<T>
     setState(next);
   }, []);
   useLayoutEffect(() => {
-    if (stateRef.current.key !== key) commit(initialResource(key, fallbackRef.current));
-  }, [commit, key]);
+    if (stateRef.current.key !== key) {
+      const current = stateRef.current;
+      const next = initialResource(key, fallbackRef.current);
+      if (keepPreviousData && previousScope.current === scopeKey && current.available) {
+        next.data = current.data;
+        next.available = true;
+      }
+      commit(next);
+    }
+    previousScope.current = scopeKey;
+  }, [commit, key, keepPreviousData, scopeKey]);
 
   const reload = useCallback(async (afterMutation = false) => {
     const lifetime = lifetimeRef.current;
@@ -391,7 +402,10 @@ export function useSettingsQuery<T>(path: string, fallback: T): SettingsQuery<T>
       if (afterMutation && !result.available) commit({ ...stateRef.current, available: false, notice: REFRESH_FAILED });
       else commit({ ...stateRef.current, key, data: result.data, available: result.available, notice: result.message });
     } catch (caught) {
-      if (valid()) commit({ ...stateRef.current, ...(afterMutation ? { notice: REFRESH_FAILED } : { error: settingsErrorMessage(caught, "No se pudo cargar la información.") }) });
+      if (valid()) {
+        const forbidden = caught instanceof ApiError && [401, 403].includes(caught.status);
+        commit({ ...stateRef.current, ...(forbidden ? { data: fallbackRef.current, available: false, notice: null } : {}), ...(afterMutation && !forbidden ? { notice: REFRESH_FAILED } : { error: settingsErrorMessage(caught, "No se pudo cargar la información.") }) });
+      }
     } finally {
       if (valid()) commit({ ...stateRef.current, loading: false });
     }

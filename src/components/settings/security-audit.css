@@ -3,7 +3,7 @@
 .security-audit-detail .modal-content { display: grid; gap: 20px; }
 .security-audit-heading { display: grid; gap: 8px; }
 .security-audit-heading time { color: var(--muted); font-size: .875rem; }
-.security-audit-heading p { margin: 0; }
+.security-audit-heading p { margin: 0; overflow-wrap: anywhere; }
 .security-audit-fields { margin: 0; padding: 0 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper-2); }
 .security-audit-fields > div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 16px; padding: 14px 0; }
 .security-audit-fields > div + div { border-top: 1px solid var(--line); }
@@ -13,7 +13,7 @@
 .security-audit-section h3 { margin: 0; font-size: 1rem; }
 .security-audit-row { cursor: pointer; }
 .security-audit-row:hover { background: var(--paper-2); }
-.security-audit-row button { display: block; width: 100%; padding: 4px 0; background: transparent; color: inherit; border: 0; font: inherit; text-align: left; line-height: 1.5; }
+.security-audit-row button { display: block; width: 100%; padding: 4px 0; background: transparent; color: inherit; border: 0; font: inherit; text-align: left; line-height: 1.5; overflow-wrap: anywhere; }
 .security-audit-row button:focus-visible { outline: 2px solid var(--pos-primary); outline-offset: 4px; border-radius: 4px; }
 .audit-navigation-link { display: inline-flex; align-items: center; gap: 6px; width: fit-content; max-width: 100%; color: #2465c5; text-decoration: underline; text-underline-offset: 3px; overflow-wrap: anywhere; }
 .audit-navigation-link svg { width: 18px; height: 18px; flex-shrink: 0; }

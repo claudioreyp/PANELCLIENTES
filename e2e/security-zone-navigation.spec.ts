@@ -11,6 +11,7 @@ const ORDER_CODE = "POS-CODE-201-COMPLETE";
 const ZONE_NAME = "Zona de prueba aislada";
 const MOVEMENT_ID = 9424;
 const REGISTER_ID = 9;
+const CUT_ID = 3741;
 const register = { id: REGISTER_ID, name: "Caja terraza", branch_id: 1, active: true, is_default: false };
 const occurredAt = "2026-09-08T20:58:00Z";
 const orderTarget = { kind: "order", branch_id: 1, label: `Pedido #${ORDER_CODE} (#${FOLIO})`, order_id: ORDER_ID } as const;
@@ -60,13 +61,21 @@ const auditDetails: SecurityAuditDetail[] = [
     fields: [{ label: "Motivo de cancelaci\u00f3n", value: "Motivo no registrado" }],
     sections: [], target: null,
   },
+  {
+    id: 405, branch_id: 1, actor_name: "Equipo de prueba", occurred_at: "2026-10-04T05:19:00Z",
+    summary: "realizó un corte de caja con diferencias",
+    fields: [{ label: "ID del corte", value: `#${CUT_ID}` }, { label: "Caja", value: register.name }],
+    sections: [{ title: "Efectivo", fields: [{ label: "Diferencia", value: "S/ -67.00" }] },
+      { title: "Tarjeta", fields: [{ label: "Diferencia", value: "S/ 67.00" }] }],
+    target: { kind: "cash_cut", branch_id: 1, label: `Corte #${CUT_ID}`, register_id: REGISTER_ID, cut_id: CUT_ID },
+  },
 ];
 
 const auditEntries: SecurityAuditEntry[] = auditDetails.map((detail, index) => ({
   id: detail.id, branch_id: detail.branch_id, actor_name: detail.actor_name,
   branch_name: "Matriz", occurred_at: detail.occurred_at, summary: detail.summary,
-  action: ["order.items_revised", "cash.movement_created", "order.items_revised", "order.cancelled"][index],
-  categories: [["item_cancellation"], ["cash_withdrawal"], ["amount_reduction"], ["order_cancellation"]][index],
+  action: ["order.items_revised", "cash.movement_created", "order.items_revised", "order.cancelled", "cash.cut_created"][index],
+  categories: [["item_cancellation"], ["cash_withdrawal"], ["amount_reduction"], ["order_cancellation"], ["cash_discrepancy"]][index],
 }));
 
 function orderDetail() {
@@ -141,7 +150,7 @@ const test = base.extend<{ flowMock: FlowMock }>({
       }
       if (method !== "GET") return route.fallback();
       const handled = ["/areas", "/tables", "/orders/workspace", "/kitchen/commands", "/settings/audit", "/cash/registers", `/cash/registers/${REGISTER_ID}/movements`, `/cash/registers/${REGISTER_ID}/cut-preview`].includes(path)
-        || /^\/settings\/audit\/\d+$/.test(path) || /^\/orders\/\d+\/detail$/.test(path);
+        || /^\/settings\/audit\/\d+$/.test(path) || /^\/orders\/\d+\/detail$/.test(path) || path === `/cash/cuts/${CUT_ID}`;
       if (!handled) return route.fallback();
       parityMock.reads.push({ method, path, query: url.search });
       if (["/areas", "/tables", "/orders/workspace", "/kitchen/commands", "/settings/audit"].includes(path) || path.startsWith("/settings/audit/")) expect(url.searchParams.get("branch_id")).toBe("1");
@@ -164,7 +173,23 @@ const test = base.extend<{ flowMock: FlowMock }>({
         const view = url.searchParams.get("view") || "active";
         return json(route, { items: view === "history" ? [] : detail.tickets, total: view === "history" ? 0 : detail.tickets.length, active_count: detail.tickets.length, page: 1, page_size: 12, view });
       }
-      if (path === "/settings/audit") return json(route, { items: auditEntries, total: auditEntries.length, page: 1, page_size: 10 });
+      if (path === "/settings/audit") {
+        expect(url.searchParams.get("critical_only")).toBe("true");
+        const category = url.searchParams.get("category");
+        const rows = [...auditEntries].reverse().filter((entry) => !category || entry.categories?.includes(category));
+        return json(route, { items: rows, total: rows.length, page: 1, page_size: 10 });
+      }
+      if (path === `/cash/cuts/${CUT_ID}`) return json(route, {
+        id: CUT_ID, number: CUT_ID, branch_id: 1, register, status: "closed", closed_at: "2026-10-04T05:19:00Z",
+        created_by: "Equipo de prueba", retained_fund_amount: 100, cash_withdrawn_amount: 122.50,
+        opening_amount: 100, total_expected_amount: 289.50, total_difference: 0, result: "balanced",
+        reconciliation_status: "discrepancy", has_discrepancy: true, notes: null,
+        methods: [
+          { key: "cash", label: "Efectivo", counted: 222.50, expected: 289.50, difference: -67, transactions: [] },
+          { key: "card", label: "Tarjeta", counted: 67, expected: 0, difference: 67, transactions: [] },
+          { key: "transfer", label: "Transferencias", counted: null, expected: 0, difference: null, transactions: [] },
+        ],
+      });
       const auditMatch = path.match(/^\/settings\/audit\/(\d+)$/);
       if (auditMatch) {
         const id = Number(auditMatch[1]);
@@ -199,7 +224,7 @@ const test = base.extend<{ flowMock: FlowMock }>({
 
 test.use({ storageState: { cookies: [], origins: [] }, serviceWorkers: "block", locale: "es-PE", timezoneId: "America/Lima", colorScheme: "light", contextOptions: { reducedMotion: "reduce" } });
 
-type VisualSurface = "ordersfolio" | "kitchenfolio" | "zonename" | "zoneeditornew" | "emptyzone" | "securitylist" | "securitycancel-detail" | "securitywithdrawal-detail" | "cash-exacttarget";
+type VisualSurface = "ordersfolio" | "kitchenfolio" | "zonename" | "zoneeditornew" | "emptyzone" | "securitylist" | "securitycancel-detail" | "securitywithdrawal-detail" | "cash-exacttarget" | "securitycut-detail";
 
 async function captureSurface(page: Page, surface: VisualSurface) {
   if (process.env.POS_VISUAL !== "1") return;
@@ -402,4 +427,21 @@ test("security shows reductions and legacy cancellations without inventing a mis
   await expect(legacy.dialog).toContainText("Motivo no registrado");
   await expect(legacy.dialog.getByRole("link")).toHaveCount(0);
   expect(flowMock.writes).toEqual([]);
+});
+
+test("security lists critical cuts by method and follows the exact cut in its register", async ({ page, flowMock }) => {
+  const { dialog, entry } = await openAudit(page, 405);
+  await captureSurface(page, "securitycut-detail");
+  const link = dialog.getByRole("link", { name: entry.target!.label, exact: true });
+  await expectBlueLink(link, `/caja?register_id=${REGISTER_ID}&cut_id=${CUT_ID}`);
+  await link.click();
+  const cut = page.getByRole("dialog", { name: `#${CUT_ID} en Caja terraza`, exact: true });
+  await expect(cut).toBeVisible();
+  await expect(cut).toContainText(register.name);
+  await expect(cut).toContainText("Con diferencias");
+  await expect(page.getByRole("tab", { name: "Cortes de caja", exact: true })).toHaveAttribute("aria-selected", "true");
+  expect(flowMock.writes).toEqual([]);
+  await cut.getByRole("button", { name: "Cerrar", exact: true }).click();
+  await page.getByRole("link", { name: "Regresar al historial de seguridad" }).click();
+  await expect(page.getByRole("button", { name: "Equipo de prueba realizó un corte de caja con diferencias", exact: true })).toBeFocused();
 });

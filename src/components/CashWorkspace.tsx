@@ -101,6 +101,7 @@ type CashMethodGroup = {
 };
 
 type CashCutDetail = CashCutSummary & {
+  branch_id?: number;
   opening_amount?: number;
   previous_session_id?: number | null;
   cash_withdrawn_amount: number;
@@ -731,7 +732,9 @@ function CashWorkspaceContent() {
   const location = useLocation();
   const routeRegisterId = positiveRouteId(routeParams.get("register_id"));
   const routeMovementId = positiveRouteId(routeParams.get("movement_id"));
-  const hasMovementTarget = routeParams.has("movement_id") || routeParams.has("register_id");
+  const routeCutId = positiveRouteId(routeParams.get("cut_id"));
+  const hasCutTarget = routeParams.has("cut_id");
+  const hasMovementTarget = routeParams.has("movement_id") || (routeParams.has("register_id") && !hasCutTarget);
   const invalidMovementTarget = hasMovementTarget && (!routeRegisterId || !routeMovementId);
   const [activeTab, setActiveTab] = useState<CashTab>(() => routeParams.get("tab") === "movements" || hasMovementTarget ? "movements" : "cuts");
   const [registers, setRegisters] = useState<CashRegister[]>([]);
@@ -756,6 +759,7 @@ function CashWorkspaceContent() {
   const [openingCut, setOpeningCut] = useState(false);
   const [detail, setDetail] = useState<CashCutDetail | null>(null);
   const [loadingDetailId, setLoadingDetailId] = useState<number | null>(null);
+  const [cutTargetError, setCutTargetError] = useState<string | null>(null);
   const [movementPreview, setMovementPreview] = useState<CashCutPreview | null>(null);
   const [openingMovement, setOpeningMovement] = useState(false);
   const [movementTotals, setMovementTotals] = useState<MovementTotals | null>(null);
@@ -783,6 +787,29 @@ function CashWorkspaceContent() {
   const movementScope = `${branchId}:${movementRegisterId}:${routeMovementId}:${movementPeriod}:${movementPage}`;
   const [loadedMovementScope, setLoadedMovementScope] = useState("");
   const timezone = context?.business.timezone || "America/Lima";
+
+  useEffect(() => {
+    setCutTargetError(null);
+    if (!hasCutTarget || !branchId) return;
+    let current = true;
+    setActiveTab("cuts");
+    setDetail(null);
+    setLoadingDetailId(null);
+    if (!routeCutId || !routeRegisterId) {
+      setCutTargetError("El enlace no identifica un corte y una caja válidos.");
+      return;
+    }
+    setLoadingDetailId(routeCutId);
+    api<CashCutDetail>(`/cash/cuts/${routeCutId}`).then((data) => {
+      if (!current) return;
+      if (data.id !== routeCutId || data.register.id !== routeRegisterId || data.branch_id !== branchId) {
+        throw new Error("No se pudo verificar el corte y la caja en la sucursal actual.");
+      }
+      setDetail(data);
+    }).catch((caught) => { if (current) setCutTargetError(cashErrorMessage(caught)); })
+      .finally(() => { if (current) setLoadingDetailId(null); });
+    return () => { current = false; };
+  }, [branchId, hasCutTarget, routeCutId, routeRegisterId, reloadToken]);
 
   useEffect(() => {
     setLatestCut(null);
@@ -984,6 +1011,8 @@ function CashWorkspaceContent() {
   return (
     <div className="page-stack cash-workspace">
       <AuditReturnLink />
+      {cutTargetError && <ErrorState message={cutTargetError} onRetry={refresh} />}
+      {hasCutTarget && loadingDetailId === routeCutId && <LoadingState label="Consultando el corte de caja..." />}
       <header className="cash-workspace-header">
         <h1>Caja</h1>
         <div className="cash-tabs" role="tablist" aria-label="Secciones de Caja">

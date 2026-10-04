@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CASH_DENOMINATIONS, CashWorkspace as Workspace, calculateDenominationTotal } from "./CashWorkspace";
 import { MemoryRouter } from "react-router-dom";
@@ -489,5 +489,64 @@ describe("cash movement deep links", () => {
     expect(await screen.findByText("Consulta temporalmente no disponible")).toBeVisible();
     expect(screen.getByText("Insumos del turno anterior")).toBeVisible();
     expect(screen.getByText("#9424")).toBeVisible();
+  });
+});
+
+describe("security cash cut deep links", () => {
+  const targetCut = { ...cut, branch_id: 1, register: { id: 9, name: "Caja archivada", active: false } };
+  function reads(payload: unknown = targetCut) {
+    apiMock.mockImplementation(async (path: string) => {
+      if (path.startsWith("/cash/registers?")) return [register];
+      if (path.endsWith("/cut-preview")) return preview;
+      if (path.startsWith("/cash/cuts?")) return { items: [], total: 0, page: 1, page_size: 10 };
+      if (path === "/cash/cuts/3741") return payload;
+      throw new Error(`Unexpected ${path}`);
+    });
+  }
+  const linkedApp = (path = "/caja?register_id=9&cut_id=3741") => <MemoryRouter initialEntries={[{ pathname: "/caja", search: path.slice(path.indexOf("?")), state: { auditReturnTo: "/configuracion/seguridad?page=2" } }]}><Workspace /></MemoryRouter>;
+  beforeEach(() => { apiMock.mockReset(); tenantMock.branch = { id: 1, name: "Sucursal principal" }; });
+  afterEach(cleanup);
+
+  it("opens the exact historic cut without changing the selected branch or querying movements", async () => {
+    reads();
+    render(linkedApp());
+    const modal = await screen.findByRole("dialog");
+    expect(within(modal).getByRole("heading", { name: "#3741 en Caja archivada", level: 2 })).toBeVisible();
+    expect(screen.getByRole("link", { name: "Regresar al historial de seguridad" })).toBeVisible();
+    expect(screen.getByRole("tab", { name: "Cortes de caja" })).toHaveAttribute("aria-selected", "true");
+    expect(apiMock.mock.calls.some(([path]) => path.includes("/movements"))).toBe(false);
+    expect(tenantMock.branch.id).toBe(1);
+  });
+
+  it.each([
+    { ...targetCut, id: 8 }, { ...targetCut, branch_id: 2 },
+    { ...targetCut, branch_id: undefined }, { ...targetCut, register },
+  ])("rejects an unverified cut, register or branch", async (payload) => {
+    reads(payload);
+    render(linkedApp());
+    await screen.findByText("No se pudo verificar el corte y la caja en la sucursal actual.");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("rejects malformed identifiers without opening the default cut", async () => {
+    reads();
+    render(linkedApp("/caja?register_id=9&cut_id=-1"));
+    await screen.findByText("El enlace no identifica un corte y una caja válidos.");
+    expect(apiMock.mock.calls.some(([path]) => /^\/cash\/cuts\/\d+$/.test(path))).toBe(false);
+  });
+
+  it("discards a late linked cut when the selected branch changes", async () => {
+    let resolve!: (value: unknown) => void;
+    reads();
+    const baseRead = apiMock.getMockImplementation()!;
+    apiMock.mockImplementation((path: string) => path === "/cash/cuts/3741" ? new Promise((done) => { resolve = done; }) : baseRead(path));
+    const view = render(linkedApp());
+    await waitFor(() => expect(apiMock.mock.calls.some(([path]) => path === "/cash/cuts/3741")).toBe(true));
+    const oldResolve = resolve;
+    tenantMock.branch = { id: 2, name: "Otra sucursal" };
+    view.rerender(linkedApp());
+    await act(async () => oldResolve(targetCut));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByText("#3741 en Caja archivada")).not.toBeInTheDocument();
   });
 });

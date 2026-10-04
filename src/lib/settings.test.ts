@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { loadSettings, memberInvitationFeedback, printingTemplate, saveSettings } from "./settings";
-import type { BranchProfileSettings, DeliverySettings, MemberSaveResult, SettingsMembers, PrintSettings } from "../types/settings";
+import type { BranchProfileSettings, DeliverySettings, MemberSaveResult, SettingsMembers, PrintSettings, PagedSettings, SecurityAuditEntry } from "../types/settings";
 
 const apiMock = vi.hoisted(() => vi.fn());
 
@@ -40,6 +40,16 @@ const deliveryFallback: DeliverySettings = {
 
 describe("settings adapters", () => {
   beforeEach(() => apiMock.mockReset());
+
+  it("never invents an audit author or displays a raw identity as the author", async () => {
+    apiMock.mockResolvedValue({ items: [
+      { id: 1, actor_id: "b8c2d20a-8cb6-4210-a09f-ffa33d1e47f6" },
+      { id: 2, actor_name: "b8c2d20a-8cb6-4210-a09f-ffa33d1e47f6" },
+      { id: 3 }, { id: 4, actor_display_name: " Cajero de prueba " },
+    ], total: 4 });
+    const result = await loadSettings<PagedSettings<SecurityAuditEntry>>("/settings/audit?critical_only=true", { items: [], page: 1, page_size: 10, total: 0 });
+    expect(result.data.items.map((item) => item.actor_name)).toEqual(["Usuario no registrado", "Usuario no registrado", "Usuario no registrado", "Cajero de prueba"]);
+  });
 
   it("maps the canonical branch profile name to the UI alias", async () => {
     apiMock.mockResolvedValue({ ...profileFallback, name: "Matriz Miraflores", version: 4 });

@@ -147,12 +147,13 @@ export type SecurityAuditDetail = {
   fields: SecurityAuditField[];
   sections: { title: string; fields: SecurityAuditField[] }[];
   target: null | {
-    kind: "order" | "cash_movement";
+    kind: "order" | "cash_movement" | "cash_cut";
     branch_id: number;
     label: string;
     order_id?: number;
     register_id?: number;
     movement_id?: number;
+    cut_id?: number;
   };
 };
 

@@ -2,6 +2,7 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SettingsStateProvider, useSettingsQuery, useSettingsResource } from "./SettingsState";
+import { ApiError } from "../../lib/api";
 
 const loadMock = vi.hoisted(() => vi.fn());
 const saveMock = vi.hoisted(() => vi.fn());
@@ -24,6 +25,49 @@ async function settle<T>(request: ReturnType<typeof deferred<T>>, value: T) {
 
 beforeEach(() => { loadMock.mockReset(); saveMock.mockReset(); });
 afterEach(cleanup);
+
+describe("opt-in query preservation", () => {
+  let scopeKey: string;
+  const wrapper = ({ children }: { children: ReactNode }) => <SettingsStateProvider scopeKey={scopeKey} onRegistration={() => {}}>{children}</SettingsStateProvider>;
+  beforeEach(() => { scopeKey = "business-A:branch-1:user-1"; });
+
+  it("preserves the previous confirmed page on a failed page refresh and replaces it on retry", async () => {
+    loadMock.mockResolvedValueOnce(loaded(dataA));
+    const { result, rerender } = renderHook(({ path }) => useSettingsQuery(path, fallback, { keepPreviousData: true }), { initialProps: { path: "/audit?page=2" }, wrapper });
+    await waitFor(() => expect(result.current.data).toEqual(dataA));
+    loadMock.mockRejectedValueOnce(new Error("Sin conexión"));
+    rerender({ path: "/audit?page=1" });
+    await waitFor(() => expect(result.current.error).toBe("Sin conexión"));
+    expect(result.current.data).toEqual(dataA);
+    loadMock.mockResolvedValueOnce(loaded(dataB));
+    await act(async () => result.current.reload());
+    expect(result.current.data).toEqual(dataB);
+  });
+
+  it("never keeps private pages across an access scope change", async () => {
+    loadMock.mockResolvedValueOnce(loaded(dataA));
+    const { result, rerender } = renderHook(() => useSettingsQuery("/audit", fallback, { keepPreviousData: true }), { wrapper });
+    await waitFor(() => expect(result.current.data).toEqual(dataA));
+    const read = deferred<ReturnType<typeof loaded>>();
+    loadMock.mockReturnValueOnce(read.promise);
+    scopeKey = "business-B:branch-1:user-2";
+    rerender();
+    expect(result.current.data).toEqual(fallback);
+    await settle(read, loaded(dataB));
+    expect(result.current.data).toEqual(dataB);
+  });
+
+  it.each([401, 403])("clears confirmed private data after HTTP %s", async (status) => {
+    loadMock.mockResolvedValueOnce(loaded(dataA));
+    const { result } = renderHook(() => useSettingsQuery("/audit", fallback, { keepPreviousData: true }));
+    await waitFor(() => expect(result.current.data).toEqual(dataA));
+    loadMock.mockRejectedValueOnce(new ApiError("Acceso rechazado", status));
+    await act(async () => result.current.reload());
+    expect(result.current.data).toEqual(fallback);
+    expect(result.current.available).toBe(false);
+    expect(result.current.error).toBe("Acceso rechazado");
+  });
+});
 
 describe.each(["resource", "query"] as const)("%s request identities", (kind) => {
   const useSubject = kind === "resource" ? useSettingsResource<Data> : useSettingsQuery<Data>;

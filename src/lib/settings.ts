@@ -196,13 +196,18 @@ function normalizeScheduleCollection(items: unknown[]): ScheduleSettings {
   return { version: Math.max(0, ...schedules.map((item) => item.version)), schedules };
 }
 
+export function auditActorName(...values: unknown[]) {
+  return values.find((value): value is string => typeof value === "string" && Boolean(value.trim())
+    && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value.trim()))?.trim() || "Usuario no registrado";
+}
+
 function normalizeAuditEntry(value: unknown): SecurityAuditEntry | null {
   if (!isRecord(value)) return null;
   const details = isRecord(value.payload) && typeof value.payload.message === "string" ? value.payload.message : null;
   return {
     id: numberValue(value.id),
     action: String(value.action || "acción registrada"),
-    actor_name: String(value.actor_display_name || value.actor_name || value.actor_id || "Sistema"),
+    actor_name: auditActorName(value.actor_display_name, value.actor_name),
     occurred_at: String(value.created_at || value.occurred_at || new Date(0).toISOString()),
     branch_name: typeof value.branch_name === "string" ? value.branch_name : null,
     branch_id: typeof value.branch_id === "number" ? value.branch_id : null,
