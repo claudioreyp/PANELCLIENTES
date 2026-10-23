@@ -1,3 +1,4 @@
+import { AgentAttentionPanel } from "../components/AgentAttentionPanel";
 import { OrderDetailContent } from "../components/OrderDetailContent";
 import { OrderCancellationDialog } from "../components/OrderCancellationDialog";
 import { nextAction } from "../lib/order-detail-model";
@@ -101,6 +102,13 @@ export function OrdersPage() {
   const [toast, setToast] = useState<ToastState>(null);
   const reviewingEvidence = useRef(false);
   const reviewIntent = useRef<IdempotentIntent | null>(null);
+  useEffect(() => {
+    if (!detail || !reviewIntent.current) return;
+    const [, orderId, evidenceId] = reviewIntent.current.signature.split(":");
+    const evidence = (detail.payment_evidences || (detail.payment_evidence ? [detail.payment_evidence] : []))
+      .find(item => item.id === Number(evidenceId));
+    if (detail.id === Number(orderId) && evidence && ["paid", "rejected", "superseded"].includes(evidence.status)) reviewIntent.current = null;
+  }, [detail]);
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [selectedTable, setSelectedTable] = useState<RestaurantTable | null>(null);
   const [tableCheckoutMode, setTableCheckoutMode] = useState(false);
@@ -508,10 +516,18 @@ export function OrdersPage() {
     }
   }
 
-  async function reviewEvidence(approve: boolean, selected = selectedEvidence || undefined) {
+  async function reviewEvidence(approve: boolean, selected = selectedEvidence || undefined, financialReview?: { note: string; confirmed_amount: number }) {
     if (!detail || !isCurrentSelection(detail) || !selected || reviewingEvidence.current) return;
+    if (approve && selected.requires_financial_review && (!financialReview?.note.trim() || !(financialReview.confirmed_amount > 0))) return;
+    const signature = `${detail.branch_id}:${detail.id}:${selected.id}:${approve}:${JSON.stringify(financialReview || null)}`;
+    if (reviewIntent.current && reviewIntent.current.signature !== signature) {
+      setToast({ message: "Hay una revisión sin confirmar. Reintenta con el mismo comprobante, importe y nota antes de registrar otra.", tone: "error" });
+      return;
+    }
     const request = detail.payment_requests?.find((item) => item.id === selected.payment_request_id);
-    const question = approve
+    const question = approve && selected.requires_financial_review
+      ? `¿Confirmas que verificaste el importe real de S/ ${financialReview!.confirmed_amount.toFixed(2)} frente al total actual de S/ ${detail.total.toFixed(2)}? Se conservará cualquier saldo o exceso para revisión; no se devuelve dinero automáticamente.`
+      : approve
       ? request?.purpose === "delivery" ? "¿Confirmas que el comprobante cubre el costo de envío? No se enviarán productos a cocina."
         : request ? "¿Confirmas el pago del extra? Solo los productos adicionales pasarán a cocina."
           : "¿Confirmas que el monto y los datos del comprobante son correctos? El pedido pasará a cocina."
@@ -519,8 +535,7 @@ export function OrdersPage() {
         : detail.payment_requests?.length ? "¿Rechazar el comprobante original? Las adiciones quedarán pendientes de revisión, sin enviarse a cocina."
           : "¿Rechazar este comprobante? El pedido se cancelará y el stock reservado será revertido.";
     if (!window.confirm(question)) return;
-    const signature = `${detail.branch_id}:${detail.id}:${selected.id}:${approve}`;
-    reviewIntent.current = resolveIdempotentIntent(reviewIntent.current, signature, JSON.stringify({ approve, expected_version: detail.version }));
+    reviewIntent.current = resolveIdempotentIntent(reviewIntent.current, signature, JSON.stringify({ approve, expected_version: detail.version, ...(approve && selected.requires_financial_review ? financialReview : {}) }));
     reviewingEvidence.current = true;
     setWorking(true);
     try {
@@ -870,6 +885,7 @@ export function OrdersPage() {
 
       {activeTab === "orders" && <div id="orders-panel-orders" role="tabpanel" aria-labelledby="orders-tab-orders" className="orders-tab-panel">
         {!selectedId && <AuditReturnLink />}
+        <AgentAttentionPanel key={branch?.id} onOpenOrder={id => { setHistoricalSelection(false); setSelectedTable(null); setSelectedId(id); }} />
         {routeParams.has("order_id") && !routeOrderId && <ErrorState message="El enlace del pedido no es válido." />}
         {workspace.error && data && <div className="orders-sync-warning" role="alert"><span>No se pudo actualizar el listado. Conservamos la última consulta. {workspace.error}</span><button className="button button-secondary" type="button" onClick={() => void workspace.refresh()}>Reintentar</button></div>}
         {workspace.loading && !data ? <LoadingState label="Abriendo pedidos..." /> : workspace.error && !data ? <ErrorState message={workspace.error} onRetry={() => void workspace.refresh()} /> : <>

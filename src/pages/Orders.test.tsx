@@ -19,6 +19,7 @@ function mockReads({ available = false, detail = (id: number) => order(id / 700)
   return async (path: string) => {
     const url = new URL(path, "http://test.invalid");
     const branchId = Number(url.searchParams.get("branch_id") || tenant.branch.id);
+    if (url.pathname === "/agent-attention") return [];
     if (url.pathname === "/orders/workspace") return { period: url.searchParams.get("period"), view: url.searchParams.get("view"), items: [], total: 0, review_count: 0, page: 1, page_size: 12 };
     if (url.pathname === "/catalog") return { branch: { id: branchId }, categories: [], products: [], modifier_groups: [], ingredients: [], promotions: [] };
     if (url.pathname === "/areas") return [{ id: branchId * 10, branch_id: branchId, name: `Sala ${branchId}`, sort_order: 0 }];
@@ -583,7 +584,7 @@ describe("table payment from the orders panel", () => {
     await waitFor(() => expect(mutations()).toHaveLength(1));
     saved = { ...saved, version: 3, checkout_started_at: "2026-10-02T18:00:00Z", paid_amount: 10,
       payment_status: "partial", remaining_amount: 14 };
-    await act(async () => vi.mocked(useBranchRealtime).mock.calls.at(-1)![1]());
+    await act(async () => { for (const [, refresh] of vi.mocked(useBranchRealtime).mock.calls) refresh(); });
     await waitFor(() => expect(screen.getByRole("dialog", { name: "Cobrar al cliente" }).querySelector("header > strong")).toHaveTextContent(/14/));
     await act(async () => finishStart({ order: { ...order(1), version: 2, checkout_started_at: "2026-10-02T18:00:00Z" } }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/saldo/i);

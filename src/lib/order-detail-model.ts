@@ -17,8 +17,8 @@ export function nextAction(order: OrderDetail) {
   if (order.status === "sent_to_kitchen") return null;
   if (order.status === "preparing") return null;
   const pendingRequests = (order.payment_requests || []).some((request) =>
-    request.purpose === "addition" ? ["pending", "under_review"].includes(request.status)
-      : request.method === "unselected" || (request.method === "yape" && request.status !== "paid"));
+    request.purpose === "addition" ? ["pending", "under_review", "awaiting_base_review", "requires_review"].includes(request.status)
+      : order.channel === "delivery" && !["superseded", "waived", "cancelled"].includes(request.status) && (request.method === "unselected" || (request.method === "yape" && request.status !== "paid")));
   if (pendingRequests || order.delivery_fee_status === "pending_quote") return null;
   if (order.status === "ready" && order.channel === "delivery") return { label: "Despachar delivery", kind: "dispatched" };
   if (order.status === "ready" && ["agent", "n8n", "whatsapp", "whatsapp_agent"].includes(order.source)) {

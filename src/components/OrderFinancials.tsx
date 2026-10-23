@@ -1,6 +1,7 @@
 import type { OrderDetail } from "../types";
 import { checkoutPaymentMethods, paymentMethodLabel, type CheckoutPaymentMethod } from "../lib/order-checkout";
 import { parsePosDate, formatPosDate } from "../lib/pos-dates";
+import { orderOverpayment } from "../lib/order-presentation";
 import { OrderPaymentBadge, orderPaymentDisplayStatus } from "./OrderListPanel";
 import "./order-cancellation.css";
 
@@ -28,6 +29,7 @@ export function OrderFinancials({ order }: { order: OrderDetail }) {
       {entry.at && <time dateTime={entry.at}>{formatPosDate(entry.at, { hour: "numeric", minute: "2-digit" })}</time>}
     </div>)}</div>
     {cancelled && refundable > 0 && <p className="order-financial-warning" role="note"><strong>Reembolso no registrado</strong><span>Los cobros confirmados se conservan. Importe pendiente de devolución: {amount(refundable)}.</span></p>}
+    {orderOverpayment(order) > 0 && <p className="order-financial-warning" role="note"><strong>Exceso cobrado: {amount(orderOverpayment(order))}</strong><span>Requiere revisión financiera. Marcar una incidencia como revisada o resuelta no registra una devolución ni reduce este importe.</span></p>}
     <div className="order-balance">
       <span><span>Productos</span><span>{amount(order.subtotal)}</span></span>
       {order.delivery_fee > 0 && <span><span>Costo de envío</span><span>{amount(order.delivery_fee)}</span></span>}

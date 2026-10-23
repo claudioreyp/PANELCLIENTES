@@ -83,3 +83,12 @@ describe("confirmed agent additions", () => {
     expect(screen.getByRole("region", { name: "Productos agregados por el agente" })).toBeVisible();
   });
 });
+
+it("keeps destination changes visible alongside an independent addition", () => {
+  const recent_modification = { at: "2026-10-18T15:00:00Z", source: "agent" as const, summary: "Nueva ubicación: Plaza principal" };
+  render(<OrderListPanel {...listProps} items={[{ ...workspaceOrder, recent_modification }]} />);
+  render(<OrderDetailContent {...detailProps} order={{ ...detailOrder, recent_modification }} />);
+  expect(screen.getAllByText("Cambio del agente · Revisar")).toHaveLength(2);
+  expect(screen.getByRole("region", { name: "Cambio realizado por el agente" })).toHaveTextContent("Plaza principal");
+  expect(screen.getByRole("region", { name: "Productos agregados por el agente" })).toBeVisible();
+});

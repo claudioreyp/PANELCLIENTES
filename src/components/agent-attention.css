@@ -1,0 +1,17 @@
+.agent-attention-panel { margin: 12px 0; padding: 12px 16px; border: 1px solid #e6be73; border-radius: 9px; background: #fff8e8; color: #583d18; }
+.agent-attention-panel h3 { margin: 0 0 8px; font-size: 1rem; }
+.agent-attention-overview { max-height: min(40vh, 360px); overflow: auto; }
+.agent-attention-overview:focus-visible { outline: 2px solid #25824f; outline-offset: 3px; }
+.agent-attention-entry + .agent-attention-entry { border-top: 1px solid #e6be73; }
+.agent-attention-entry summary { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; cursor: pointer; }
+.agent-attention-entry summary svg { flex: 0 0 18px; width: 18px; height: 18px; margin-top: 2px; }
+.agent-attention-entry summary span { min-width: 0; overflow-wrap: anywhere; }
+.agent-attention-entry summary small { display: block; margin-top: 4px; }
+.agent-attention-content p { margin: 8px 0; overflow-wrap: anywhere; }
+.agent-attention-review { display: grid; gap: 10px; margin: 10px 0; }
+.agent-attention-review label { display: grid; gap: 6px; }
+.agent-attention-review textarea { width: 100%; min-height: 68px; resize: vertical; }
+.agent-attention-review > div { display: flex; flex-wrap: wrap; gap: 8px; }
+.agent-attention-entry summary:focus-visible { outline: 2px solid #25824f; outline-offset: 3px; }
+.agent-attention-receipt { margin: 10px 0; }
+.agent-attention-receipt img { display: block; max-width: 100%; max-height: 480px; object-fit: contain; margin-top: 10px; }

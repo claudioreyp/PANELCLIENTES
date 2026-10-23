@@ -105,6 +105,7 @@ function toWorkspaceItem(order: Order): OrderWorkspaceItem {
     version: order.version,
     recent_modification: order.recent_modification,
     recent_agent_addition: order.recent_agent_addition,
+    overpayment_amount: order.overpayment_amount,
   };
 }
 

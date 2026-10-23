@@ -15,6 +15,9 @@ export function orderServiceChannel(order: Pick<Order, "channel" | "source">): P
   return digital ? "digital_tables" : "pos_counter";
 }
 export const isActiveOrderItem = (item: OrderItem) => !["cancelled", "superseded"].includes(item.status);
+export function orderOverpayment(order: { overpayment_amount?: number; financial_summary?: { overpayment_amount?: number } }) {
+  return Number(order.financial_summary?.overpayment_amount ?? order.overpayment_amount ?? 0);
+}
 export function agentAdditionLabel(addition?: OrderRecentAgentAddition | null): string | null {
   if (addition?.source !== "agent" || !Number.isInteger(addition.item_count) || addition.item_count <= 0) return null;
   return addition.item_count === 1 ? "Producto agregado por el agente" : "Productos agregados por el agente";
@@ -110,4 +113,10 @@ export function groupOrderModifiers(modifiers: OrderModifierSnapshot[], quantity
     else group.options.push({ key, name: modifier.name, quantity: units, amount });
   }
   return [...groups.values()];
+}
+
+export function hasDistinctAgentModification(order: { recent_modification?: { source: string; at: string; summary: string } | null; recent_agent_addition?: OrderRecentAgentAddition | null }) {
+  const change = order.recent_modification;
+  const addition = order.recent_agent_addition;
+  return change?.source === "agent" && !(agentAdditionLabel(addition) && change.at === addition?.at && change.summary === addition.summary);
 }

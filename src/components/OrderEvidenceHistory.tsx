@@ -7,16 +7,20 @@ import { Money, StatusPill } from "./ui";
 
 function EvidenceCard({ evidence, request, working, mayReview, initialPaid, onReview }: {
   evidence: PaymentEvidence; request?: OrderPaymentRequest; working: boolean; mayReview: boolean;
-  initialPaid: boolean; onReview: (approve: boolean, evidence: PaymentEvidence) => Promise<void>;
+  initialPaid: boolean; onReview: (approve: boolean, evidence: PaymentEvidence, financialReview?: { note: string; confirmed_amount: number }) => Promise<void>;
 }) {
   const [image, setImage] = useState<string | null>(null);
   const [error, setError] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const [reviewNote, setReviewNote] = useState("");
+  const [confirmedAmount, setConfirmedAmount] = useState(evidence.amount_detected != null ? String(evidence.amount_detected) : "");
+  const financialReviewComplete = reviewNote.trim().length > 0 && Number.isFinite(Number(confirmedAmount)) && Number(confirmedAmount) > 0;
   useEffect(() => {
     let alive = true;
     let url: string | null = null;
     setImage(null); setError(false);
-    void apiBlob(evidence.image_url).then((blob) => {
+    const imagePath = evidence.image_url.startsWith("/api/v1/") ? evidence.image_url.slice("/api/v1".length) : evidence.image_url;
+    void apiBlob(imagePath).then((blob) => {
       if (!alive) return;
       url = URL.createObjectURL(blob); setImage(url);
     }).catch(() => { if (alive) setError(true); });
@@ -36,9 +40,16 @@ function EvidenceCard({ evidence, request, working, mayReview, initialPaid, onRe
         <div><dt>Destinatario</dt><dd>{evidence.recipient || "Por revisar"}</dd></div></dl>
       {evidence.warnings.length > 0 && <p className="evidence-warning">Revisar: {evidence.warnings.join(" · ")}</p>}
       {evidence.rejection_reason && <p>{evidence.rejection_reason}</p>}
+      {evidence.requires_financial_review && reviewable && <div className="agent-attention-review" role="group" aria-label="Revisión del importe tras cambio de entrega">
+        <strong>El importe cambió después de recibir el comprobante</strong>
+        {evidence.financial_review && <p>Importe original: <Money value={evidence.financial_review.original_expected_amount} />. Total actual: <Money value={evidence.financial_review.current_total} />.</p>}
+        <p>Verifica el pago real. La aprobación conservará el saldo o exceso correspondiente; no realiza devoluciones automáticas.</p>
+        {mayReview && <><label>Importe realmente verificado<input type="number" min="0.01" step="0.01" value={confirmedAmount} disabled={working} onChange={event => setConfirmedAmount(event.target.value)} /></label>
+          <label>Nota de revisión financiera<textarea maxLength={1000} value={reviewNote} disabled={working} onChange={event => setReviewNote(event.target.value)} /></label></>}
+      </div>}
       {request && !initialPaid && reviewable && <p>Primero aprueba el comprobante del pedido original.</p>}
       {mayReview && reviewable && <div className="review-actions">
-        <button type="button" className="button button-success" disabled={working || Boolean(request && !initialPaid)} onClick={() => void onReview(true, evidence)}><CheckCircle2 />{request?.purpose === "delivery" ? "Aprobar pago del envío" : request ? "Aprobar pago y agregar productos" : "Aprobar pago y preparar"}</button>
+        <button type="button" className="button button-success" disabled={working || Boolean(request && !initialPaid) || Boolean(evidence.requires_financial_review && !financialReviewComplete)} onClick={() => void onReview(true, evidence, evidence.requires_financial_review ? { note: reviewNote.trim(), confirmed_amount: Number(confirmedAmount) } : undefined)}><CheckCircle2 />{request?.purpose === "delivery" ? "Aprobar pago del envío" : request ? "Aprobar pago y agregar productos" : "Aprobar pago y preparar"}</button>
         <button type="button" className="button button-danger" disabled={working} onClick={() => void onReview(false, evidence)}><XCircle /> Rechazar comprobante</button>
       </div>}
     </div>
@@ -46,7 +57,7 @@ function EvidenceCard({ evidence, request, working, mayReview, initialPaid, onRe
 }
 
 export function OrderEvidenceHistory({ order, working, onReview }: {
-  order: OrderDetail; working: boolean; onReview: (approve: boolean, evidence?: PaymentEvidence) => Promise<void>;
+  order: OrderDetail; working: boolean; onReview: (approve: boolean, evidence?: PaymentEvidence, financialReview?: { note: string; confirmed_amount: number }) => Promise<void>;
 }) {
   const { context } = useTenant();
   const mayReview = [context?.role, ...(context?.roles || [])].some((role) => ["superadmin", "owner", "manager", "cashier"].includes(role || ""));

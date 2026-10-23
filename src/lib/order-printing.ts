@@ -48,8 +48,70 @@ export class OrderPrinting {
   private folios = new Map<number, number | null>();
   private acknowledgements = new Map<string, PendingAck>();
   private manualIntents = new Map<number, { body: string; key: string; jobId?: string }>();
+  private discovery: Promise<void> | null = null;
+  private discoveryAgain = false;
+  private discoveryFailed = false;
+  private awaitingConfirmation = new Map<number, string | undefined>();
+  private reconciliationEpoch = new Map<number, number>();
+  private reconciliations = new Map<number, { epoch: number; task: Promise<void> }>();
 
-  constructor(private branchId: number, private signal: AbortSignal, private notify: (notice: PrintNotice) => void) {}
+  constructor(private branchId: number, private signal: AbortSignal, private notify: (notice: PrintNotice) => void) {
+    signal.addEventListener("abort", () => {
+      this.awaitingConfirmation.clear();
+      this.reconciliationEpoch.clear();
+    }, { once: true });
+  }
+
+  discover(): Promise<void> {
+    if (this.signal.aborted) return Promise.resolve();
+    if (this.discovery) { this.discoveryAgain = true; return this.discovery; }
+    this.discovery = this.discoverPages().finally(() => {
+      this.discovery = null;
+      if (this.discoveryAgain && !this.signal.aborted) { this.discoveryAgain = false; void this.discover(); }
+    });
+    return this.discovery;
+  }
+
+  private async discoverPages() {
+    try {
+      // A completed claim disappears from the pending queue without changing
+      // the order version. Refresh only claims this scope already observed.
+      for (const orderId of [...this.awaitingConfirmation.keys()]) {
+        await this.active.get(orderId);
+        await this.reconcileConfirmation(orderId);
+      }
+      let cursor = 0;
+      do {
+        this.signal.throwIfAborted();
+        const page = await api<{ branch_id: number; items: { order_id: number; version: number }[]; next_after_order_id: number | null }>(
+          `/orders/printing/pending?branch_id=${this.branchId}&after_order_id=${cursor}`, { signal: this.signal });
+        this.signal.throwIfAborted();
+        if (page.branch_id !== this.branchId || !Array.isArray(page.items) || page.items.length > 100
+          || page.items.some((row, i) => !Number.isInteger(row.order_id) || row.order_id <= (i ? page.items[i - 1].order_id : cursor)
+            || !Number.isInteger(row.version) || row.version < 1)
+          || (page.next_after_order_id !== null && (!page.items.length || page.next_after_order_id !== page.items.at(-1)?.order_id))) {
+          throw new Error("La API devolvió una cola de impresión incompatible.");
+        }
+        for (const row of page.items) {
+          this.signal.throwIfAborted();
+          // The server found pending work, including a newly added document.
+          // It may share the last observed order version; jobs remain the
+          // dispatch authority, not the notification/version deduplication.
+          this.seen.delete(`${row.order_id}:${row.version}`);
+          await this.run(row.order_id, false, row.version);
+        }
+        if (page.next_after_order_id === null) break;
+        cursor = page.next_after_order_id;
+      } while (!this.signal.aborted);
+      if (this.discoveryFailed && !this.signal.aborted) this.publish(0, "Se recuperó la consulta de impresión automática.");
+      this.discoveryFailed = false;
+    } catch {
+      if (!this.signal.aborted) {
+        this.discoveryFailed = true;
+        this.publish(0, "No se pudo consultar la impresión automática. Reintenta para comprobar los pedidos recibidos.", false, true, true);
+      }
+    }
+  }
 
   manual(request: ManualPrintRequest): Promise<void> {
     if (this.signal.aborted || request.branchId !== this.branchId) return Promise.resolve();
@@ -75,6 +137,7 @@ export class OrderPrinting {
     }
     if (!explicit && this.seen.has(confirmation)) return Promise.resolve();
     this.seen.add(confirmation);
+    this.reconciliationEpoch.set(orderId, (this.reconciliationEpoch.get(orderId) || 0) + 1);
     const task = this.process(orderId, explicit).finally(() => this.active.delete(orderId));
     this.active.set(orderId, task);
     return task;
@@ -92,6 +155,72 @@ export class OrderPrinting {
     }
     if (response.items.length) this.folios.set(orderId, response.items[0].payload.order.folio ?? null);
     return response;
+  }
+
+  private hasPendingAck(orderId: number) {
+    return [...this.acknowledgements.values()].some((ack) => ack.path.startsWith(`/orders/${orderId}/`));
+  }
+
+  private waitForConfirmation(milliseconds: number): Promise<boolean> {
+    if (this.signal.aborted) return Promise.resolve(false);
+    return new Promise((resolve) => {
+      const finish = (active: boolean) => {
+        clearTimeout(timer);
+        this.signal.removeEventListener("abort", abort);
+        resolve(active);
+      };
+      const abort = () => finish(false);
+      const timer = setTimeout(() => finish(true), milliseconds);
+      this.signal.addEventListener("abort", abort, { once: true });
+    });
+  }
+
+  private publishConfirmation(orderId: number, response: PrintingResponse, manualJobId?: string) {
+    if (manualJobId) response = { ...response, items: response.items.filter((job) => job.id === manualJobId) };
+    if (!response.items.length) throw new Error("No se pudo comprobar el documento tomado por una terminal.");
+    const claimed = response.items.some((job) => job.status === "claimed");
+    const pending = response.items.some((job) => job.status === "pending" || job.status === "failed" && job.retryable);
+    const unknown = response.items.some((job) => job.status === "failed" && !job.retryable);
+    if (claimed) this.awaitingConfirmation.set(orderId, manualJobId);
+    else this.awaitingConfirmation.delete(orderId);
+    if (this.hasPendingAck(orderId)) this.publish(orderId, "Falta confirmar el resultado con la API. Reintenta para sincronizarlo; no se volverá a enviar el documento.", false, true, true);
+    else if (unknown) this.publish(orderId, "Revisa la impresora: hay un envío cuyo resultado no se pudo confirmar. No se repetirá automáticamente.", false, pending, true);
+    else if (claimed) this.publish(orderId, "Documento tomado por una terminal; resultado pendiente de confirmación. No se enviará otra copia automáticamente.");
+    else if (pending || response.recoverable_error) this.publish(orderId, "Impresión pendiente. Revisa la impresora y el estado del documento antes de reintentar.", false, true, true);
+    else if (manualJobId && response.items.some((job) => job.status === "cancelled")) this.publish(orderId, "El documento quedó desactualizado y no se imprimió. Actualiza el detalle y solicita la impresión nuevamente.", false, false, true);
+    else this.publish(orderId, "No quedan trabajos automáticos pendientes.");
+  }
+
+  private reconcileConfirmation(orderId: number, boundedWait = false): Promise<void> {
+    if (this.signal.aborted || !this.awaitingConfirmation.has(orderId)) return Promise.resolve();
+    const epoch = this.reconciliationEpoch.get(orderId) || 0;
+    const active = this.reconciliations.get(orderId);
+    if (active?.epoch === epoch) return active.task;
+    const manualJobId = this.awaitingConfirmation.get(orderId);
+    const current = () => !this.signal.aborted && (this.reconciliationEpoch.get(orderId) || 0) === epoch;
+    // Status reads never grant a claim, call QZ, create a copy or retry an ACK.
+    // If the owner finishes later, focus/reconnect/discovery can read again.
+    const task = (async () => {
+      for (const delay of boundedWait ? [100, 400, 1000] : [0]) {
+        if (delay && !await this.waitForConfirmation(delay)) return;
+        if (!current() || !this.awaitingConfirmation.has(orderId)) return;
+        try {
+          const response = await this.readJobs(orderId);
+          if (!current()) return;
+          this.publishConfirmation(orderId, response, manualJobId);
+        } catch (error) {
+          if (!current()) return;
+          if (error instanceof ApiError && error.status >= 400 && error.status < 500) this.awaitingConfirmation.delete(orderId);
+          if (this.hasPendingAck(orderId)) this.publish(orderId, "Falta confirmar el resultado con la API. Reintenta para sincronizarlo; no se volverá a enviar el documento.", false, true, true);
+          else this.publish(orderId, "No se pudo actualizar el estado de impresión. El resultado sigue pendiente de confirmación; no se enviará otra copia automáticamente.", false, false, true);
+          return;
+        }
+      }
+    })().finally(() => {
+      if (this.reconciliations.get(orderId)?.epoch === epoch) this.reconciliations.delete(orderId);
+    });
+    this.reconciliations.set(orderId, { epoch, task });
+    return task;
   }
 
   private async acknowledge(jobId: string, ack: PendingAck) {
@@ -184,15 +313,19 @@ export class OrderPrinting {
         response.items = response.items.filter((job) => job.id === manual.jobId);
         if (!response.items.length) throw new Error("No se pudo verificar el documento solicitado. Reintenta para consultar su estado.");
       }
-      const pendingAck = [...this.acknowledgements.values()].some((ack) => ack.path.startsWith(`/orders/${orderId}/`));
+      const pendingAck = this.hasPendingAck(orderId);
       const pending = response.items.some((job) => job.status === "pending" || job.status === "failed" && job.retryable);
-      const uncertain = response.items.some((job) => job.status === "claimed" || job.status === "failed" && !job.retryable);
+      const claimed = response.items.some((job) => job.status === "claimed");
+      const uncertain = response.items.some((job) => job.status === "failed" && !job.retryable);
+      if (claimed) this.awaitingConfirmation.set(orderId, manual?.jobId);
+      else this.awaitingConfirmation.delete(orderId);
       const sent = response.items.filter((job) => job.status === "printed" && attempted.has(job.id));
       const printed = sent.length;
       const cancelled = response.items.some((job) => job.status === "cancelled");
       if (manual && !pendingAck && !pending) this.manualIntents.delete(orderId);
       if (pendingAck) this.publish(orderId, "Falta confirmar el resultado con la API. Reintenta para sincronizarlo; no se volverá a enviar el documento.", false, true, true);
       else if (uncertain) this.publish(orderId, `${printed ? `${printed} documento enviado. ` : ""}Revisa la impresora: hay un envío cuyo resultado no se pudo confirmar. No se repetirá automáticamente.`, false, pending, true);
+      else if (claimed) this.publish(orderId, "Documento tomado por una terminal; resultado pendiente de confirmación. No se enviará otra copia automáticamente.");
       else if (pending || response.recoverable_error) this.publish(orderId, `${printed ? `${printed} documento enviado. ` : ""}Impresión pendiente. ${failure || "Abre QZ Tray y reintenta."}`, false, true, true);
       else if (manual && cancelled) this.publish(orderId, failure || "El documento quedó desactualizado y no se imprimió. Actualiza el detalle y solicita la impresión nuevamente.", false, false, true);
       else {
@@ -202,6 +335,7 @@ export class OrderPrinting {
             : printed === 1 ? "Ticket enviado" : "Tickets enviados";
         this.publish(orderId, printed ? `${label} a la impresora. El pedido está confirmado.` : "No quedan trabajos automáticos pendientes.");
       }
+      if (claimed && !pendingAck) await this.reconcileConfirmation(orderId, true);
     } catch (error) {
       if (error instanceof ApiError && error.status >= 400 && error.status < 500 && !this.manualIntents.get(orderId)?.jobId) {
         this.manualIntents.delete(orderId);

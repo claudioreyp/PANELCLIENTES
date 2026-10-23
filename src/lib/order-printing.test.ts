@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OrderPrinting, type PosPrintJob } from "./order-printing";
 import { api, ApiError } from "./api";
 import { qzBridge } from "./qz-tray";
@@ -17,6 +17,7 @@ function job(id: string, kind: PosPrintJob["job_type"]): PosPrintJob {
 
 describe("automatic order printing", () => {
   let jobs: PosPrintJob[];
+  afterEach(() => vi.useRealTimers());
   beforeEach(() => {
     vi.clearAllMocks();
     jobs = [job("receipt", "customer_receipt"), job("kitchen", "kitchen_ticket")];
@@ -45,6 +46,50 @@ describe("automatic order printing", () => {
     expect(jobs.every((item) => item.status === "printed")).toBe(true);
     expect(notify).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining("Ticket y comanda enviados"), warning: false }));
     expect(notify).toHaveBeenLastCalledWith(expect.objectContaining({ message: "No quedan trabajos automáticos pendientes.", warning: false }));
+  });
+
+  it.each([2, 3])("discovers a later addition at order version %s without repeating old documents", async (additionVersion) => {
+    const normal = vi.mocked(api).getMockImplementation()!;
+    let version = 2;
+    vi.mocked(api).mockImplementation(async (path, options) => path.startsWith("/orders/printing/pending?")
+      ? { branch_id: 7, items: jobs.some((row) => row.status === "pending") ? [{ order_id: 12, version }] : [], next_after_order_id: null }
+      : normal(path, options));
+    const printing = new OrderPrinting(7, new AbortController().signal, vi.fn());
+    await printing.discover(); await printing.discover();
+    expect(qzBridge.dispatch).toHaveBeenCalledTimes(2);
+    version = additionVersion;
+    jobs.push(job("addition", "kitchen_ticket"));
+    await printing.discover(); await printing.discover();
+    expect(qzBridge.dispatch).toHaveBeenCalledTimes(3);
+    expect(qzBridge.dispatch).toHaveBeenLastCalledWith(expect.objectContaining({ jobName: "Comanda - ABC" }));
+  });
+
+  it("paginates remote discovery without truncating and does not enter another branch", async () => {
+    const printing = new OrderPrinting(7, new AbortController().signal, vi.fn());
+    const run = vi.spyOn(printing, "run").mockResolvedValue();
+    vi.mocked(api).mockResolvedValueOnce({ branch_id: 7, items: [{ order_id: 12, version: 2 }], next_after_order_id: 12 })
+      .mockResolvedValueOnce({ branch_id: 7, items: [{ order_id: 20, version: 1 }], next_after_order_id: null });
+    await printing.discover();
+    expect(run.mock.calls).toEqual([[12, false, 2], [20, false, 1]]);
+    expect(api).toHaveBeenCalledWith(expect.stringContaining("after_order_id=12"), expect.anything());
+    run.mockClear();
+    vi.mocked(api).mockResolvedValue({ branch_id: 8, items: [{ order_id: 90, version: 1 }], next_after_order_id: null });
+    await printing.discover();
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it("cancels late discovery on scope change and surfaces API failure without printing", async () => {
+    const controller = new AbortController(), notify = vi.fn();
+    const printing = new OrderPrinting(7, controller.signal, notify);
+    vi.mocked(api).mockRejectedValueOnce(new Error("offline"));
+    await printing.discover();
+    expect(notify).toHaveBeenCalledWith(expect.objectContaining({ orderId: 0, retryable: true, warning: true }));
+    let resolve!: (value: unknown) => void;
+    vi.mocked(api).mockImplementation(() => new Promise((done) => { resolve = done; }));
+    const task = printing.discover(); controller.abort();
+    resolve({ branch_id: 7, items: [{ order_id: 12, version: 2 }], next_after_order_id: null });
+    await task;
+    expect(qzBridge.dispatch).not.toHaveBeenCalled();
   });
 
   it("renders the saved branch address, never another terminal's current branch", async () => {
@@ -185,6 +230,206 @@ describe("automatic order printing", () => {
     vi.mocked(api).mockImplementation(async (path, options) => path.endsWith("/claim") ? { dispatch_allowed: false } : base(path, options));
     await new OrderPrinting(7, new AbortController().signal, vi.fn()).run(12);
     expect(vi.mocked(api).mock.calls.some(([path]) => path.endsWith("/complete"))).toBe(false);
+  });
+
+  it.each(["printed", "unknown"] as const)("converges two competing terminals to %s without another dispatch", async (outcome) => {
+    vi.useFakeTimers();
+    jobs = [job("addition", "kitchen_ticket")];
+    const base = vi.mocked(api).getMockImplementation()!;
+    const initialReaders: (() => void)[] = [];
+    let initialReads = 0, authorizedSends = 0;
+    vi.mocked(api).mockImplementation(async (path, options) => {
+      if (path === "/orders/12/printing" && initialReads++ < 2) {
+        const snapshot = structuredClone(jobs);
+        await new Promise<void>((done) => { initialReaders.push(done); if (initialReaders.length === 2) initialReaders.forEach((release) => release()); });
+        return { order_id: 12, items: snapshot, recoverable_error: false };
+      }
+      if (path.endsWith("/claim") && jobs[0].status !== "pending") throw new ApiError("Print job already claimed; dispatch outcome may be unknown", 409);
+      return base(path, options);
+    });
+    let release!: () => void;
+    vi.mocked(qzBridge.dispatch).mockImplementation(async (options) => {
+      await options.beforeSend(); options.onSending(); authorizedSends++;
+      await new Promise<void>((done) => { release = done; });
+      if (outcome === "unknown") throw new Error("QZ reply lost");
+    });
+    const firstNotice = vi.fn(), secondNotice = vi.fn();
+    const first = new OrderPrinting(7, new AbortController().signal, firstNotice).run(12, false, 4);
+    const second = new OrderPrinting(7, new AbortController().signal, secondNotice).run(12, false, 4);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(authorizedSends).toBe(1);
+    expect(vi.mocked(api).mock.calls.filter(([path]) => path.endsWith("/claim"))).toHaveLength(2);
+    expect([...firstNotice.mock.calls, ...secondNotice.mock.calls].some(([notice]) => notice.message.includes("pendiente de confirmación") && !notice.warning)).toBe(true);
+    release();
+    await vi.advanceTimersByTimeAsync(1600); await Promise.all([first, second]);
+    expect(authorizedSends).toBe(1);
+    expect(vi.mocked(api).mock.calls.filter(([path]) => path.endsWith("/complete"))).toHaveLength(1);
+    expect(jobs[0].status).toBe(outcome === "printed" ? "printed" : "failed");
+    expect(firstNotice).toHaveBeenLastCalledWith(expect.objectContaining({ warning: outcome === "unknown", retryable: false }));
+    expect(secondNotice).toHaveBeenLastCalledWith(expect.objectContaining({ warning: outcome === "unknown", retryable: false }));
+  });
+
+  it("refreshes an observed claim after the bounded window even when the pending queue is empty", async () => {
+    vi.useFakeTimers();
+    jobs = [{ ...job("addition", "kitchen_ticket"), status: "claimed" }];
+    const base = vi.mocked(api).getMockImplementation()!;
+    vi.mocked(api).mockImplementation(async (path, options) => path.startsWith("/orders/printing/pending?")
+      ? { branch_id: 7, items: [], next_after_order_id: null } : base(path, options));
+    const notify = vi.fn(), printing = new OrderPrinting(7, new AbortController().signal, notify);
+    const first = printing.run(12, false, 4);
+    await vi.advanceTimersByTimeAsync(1600); await first;
+    expect(vi.mocked(api).mock.calls.filter(([path]) => path === "/orders/12/printing")).toHaveLength(5);
+    expect(notify).toHaveBeenLastCalledWith(expect.objectContaining({ message: expect.stringContaining("pendiente de confirmación"), warning: false }));
+    jobs[0].status = "printed";
+    await printing.discover();
+    expect(notify).toHaveBeenLastCalledWith(expect.objectContaining({ message: "No quedan trabajos automáticos pendientes.", warning: false }));
+    const reads = vi.mocked(api).mock.calls.filter(([path]) => path === "/orders/12/printing").length;
+    await printing.discover(); await printing.discover();
+    expect(vi.mocked(api).mock.calls.filter(([path]) => path === "/orders/12/printing")).toHaveLength(reads);
+    expect(qzBridge.dispatch).not.toHaveBeenCalled();
+    expect(vi.mocked(api).mock.calls.every(([, options]) => !options?.method || options.method === "GET")).toBe(true);
+  });
+
+  it("keeps a local lost ACK ahead of status reconciliation without retrying it automatically", async () => {
+    jobs[1].status = "claimed";
+    const base = vi.mocked(api).getMockImplementation()!;
+    vi.mocked(api).mockImplementation(async (path, options) => {
+      if (path.startsWith("/orders/printing/pending?")) return { branch_id: 7, items: [], next_after_order_id: null };
+      if (path.endsWith("/receipt/complete")) { await base(path, options); throw new Error("ACK response lost after commit"); }
+      return base(path, options);
+    });
+    const notify = vi.fn(), printing = new OrderPrinting(7, new AbortController().signal, notify);
+    await printing.run(12);
+    jobs[1].status = "printed";
+    const calls = vi.mocked(api).mock.calls.length;
+    await printing.discover();
+    expect(notify).toHaveBeenLastCalledWith(expect.objectContaining({ message: expect.stringContaining("Falta confirmar el resultado con la API"), retryable: true, warning: true }));
+    expect(vi.mocked(api).mock.calls.slice(calls).every(([, options]) => !options?.method || options.method === "GET")).toBe(true);
+    expect(vi.mocked(api).mock.calls.filter(([path]) => path.endsWith("/receipt/complete"))).toHaveLength(1);
+    expect(qzBridge.dispatch).toHaveBeenCalledOnce();
+  });
+
+  it.each(["wait", "read"])("aborts claim reconciliation during its %s without a late notice", async (phase) => {
+    vi.useFakeTimers();
+    jobs = [{ ...job("addition", "kitchen_ticket"), status: "claimed" }];
+    const base = vi.mocked(api).getMockImplementation()!;
+    let reads = 0, release!: (value: unknown) => void;
+    vi.mocked(api).mockImplementation(async (path, options) => {
+      if (path === "/orders/12/printing" && ++reads === 3 && phase === "read") return new Promise((done) => { release = done; });
+      return base(path, options);
+    });
+    const controller = new AbortController(), notify = vi.fn(), printing = new OrderPrinting(7, controller.signal, notify);
+    const task = printing.run(12);
+    await vi.advanceTimersByTimeAsync(phase === "read" ? 100 : 0);
+    const notices = notify.mock.calls.length;
+    controller.abort();
+    if (phase === "read") release({ order_id: 12, items: [{ ...jobs[0], status: "printed" }], recoverable_error: false });
+    await task; await vi.advanceTimersByTimeAsync(5000); await printing.discover();
+    expect(notify).toHaveBeenCalledTimes(notices);
+    expect(reads).toBe(phase === "read" ? 3 : 2);
+    expect(qzBridge.dispatch).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("retains an unconfirmed notice when a status read fails and recovers on the next discovery", async () => {
+    vi.useFakeTimers();
+    jobs = [{ ...job("addition", "kitchen_ticket"), status: "claimed" }];
+    const base = vi.mocked(api).getMockImplementation()!;
+    let reads = 0;
+    vi.mocked(api).mockImplementation(async (path, options) => {
+      if (path.startsWith("/orders/printing/pending?")) return { branch_id: 7, items: [], next_after_order_id: null };
+      if (path === "/orders/12/printing" && ++reads === 3) throw new Error("offline");
+      return base(path, options);
+    });
+    const notify = vi.fn(), printing = new OrderPrinting(7, new AbortController().signal, notify);
+    const first = printing.run(12); await vi.advanceTimersByTimeAsync(100); await first;
+    expect(notify).toHaveBeenLastCalledWith(expect.objectContaining({ message: expect.stringContaining("No se pudo actualizar"), warning: true }));
+    jobs[0].status = "printed"; await printing.discover();
+    expect(notify).toHaveBeenLastCalledWith(expect.objectContaining({ message: "No quedan trabajos automáticos pendientes.", warning: false }));
+    expect(qzBridge.dispatch).not.toHaveBeenCalled();
+  });
+
+  it.each(["addition", "manual"] as const)("ignores a stale reconciliation response after a new %s execution", async (kind) => {
+    vi.useFakeTimers();
+    jobs = [{ ...job("older", "kitchen_ticket"), status: "claimed" }];
+    const base = vi.mocked(api).getMockImplementation()!;
+    let holdRead = false, release!: (value: unknown) => void;
+    vi.mocked(api).mockImplementation(async (path, options) => {
+      if (path.startsWith("/orders/printing/pending?")) return { branch_id: 7, items: [], next_after_order_id: null };
+      if (path === "/orders/12/printing" && options?.method === "POST") {
+        const created = job("new-manual", "customer_receipt"); jobs.push(created); return created;
+      }
+      if (path === "/orders/12/printing" && holdRead) {
+        holdRead = false;
+        return new Promise((done) => { release = done; });
+      }
+      return base(path, options);
+    });
+    const notify = vi.fn(), printing = new OrderPrinting(7, new AbortController().signal, notify);
+    const first = printing.run(12, false, 3); await vi.advanceTimersByTimeAsync(1600); await first;
+    holdRead = true;
+    const refresh = printing.discover(); await vi.advanceTimersByTimeAsync(0);
+    expect(release).toBeDefined();
+    const stale = structuredClone(jobs);
+    jobs[0].status = "printed";
+    if (kind === "addition") { jobs.push(job("new-addition", "kitchen_ticket")); await printing.run(12, false, 4); }
+    else await printing.manual({ branchId: 7, orderId: 12, orderVersion: 4 });
+    expect(jobs.every((entry) => entry.status === "printed")).toBe(true);
+    const notices = notify.mock.calls.length, latest = notify.mock.lastCall?.[0];
+    release({ order_id: 12, items: stale, recoverable_error: false }); await refresh;
+    expect(notify).toHaveBeenCalledTimes(notices);
+    expect(notify).toHaveBeenLastCalledWith(latest);
+    const reads = vi.mocked(api).mock.calls.filter(([path]) => path === "/orders/12/printing").length;
+    await printing.discover();
+    expect(vi.mocked(api).mock.calls.filter(([path]) => path === "/orders/12/printing")).toHaveLength(reads);
+    expect(qzBridge.dispatch).toHaveBeenCalledOnce();
+  });
+
+  it.each(["printed", "cancelled", "unknown", "missing"] as const)("keeps manual reconciliation scoped to its own %s document", async (outcome) => {
+    vi.useFakeTimers();
+    jobs = [{ ...job("old-unknown", "customer_receipt"), status: "failed", retryable: false }];
+    const manualJob = { ...job("manual-copy", "kitchen_ticket"), status: "claimed" as const };
+    const base = vi.mocked(api).getMockImplementation()!;
+    let reads = 0;
+    vi.mocked(api).mockImplementation(async (path, options) => {
+      if (path === "/orders/12/printing" && options?.method === "POST") { jobs.push(manualJob); return manualJob; }
+      if (path === "/orders/12/printing" && ++reads === 3) {
+        if (outcome === "missing") jobs = jobs.filter((entry) => entry.id !== manualJob.id);
+        else jobs = jobs.map((entry) => entry.id === manualJob.id ? { ...entry, status: outcome === "unknown" ? "failed" : outcome } : entry);
+      }
+      return base(path, options);
+    });
+    const notify = vi.fn(), printing = new OrderPrinting(7, new AbortController().signal, notify);
+    const task = printing.manual({ branchId: 7, orderId: 12, orderVersion: 2, ticketId: 33, ticketVersion: 4 });
+    await vi.advanceTimersByTimeAsync(1600); await task;
+    const message = outcome === "printed" ? "No quedan trabajos automáticos pendientes."
+      : outcome === "cancelled" ? "El documento quedó desactualizado y no se imprimió."
+        : outcome === "unknown" ? "Revisa la impresora: hay un envío cuyo resultado no se pudo confirmar."
+          : "No se pudo actualizar el estado de impresión.";
+    expect(notify).toHaveBeenLastCalledWith(expect.objectContaining({ message: expect.stringContaining(message), warning: outcome !== "printed" }));
+    expect(qzBridge.dispatch).not.toHaveBeenCalled();
+    expect(vi.mocked(api).mock.calls.filter(([, options]) => options?.method === "POST")).toHaveLength(1);
+    expect(jobs.find((entry) => entry.id === "old-unknown")).toMatchObject({ status: "failed", retryable: false });
+  });
+
+  it("deduplicates concurrent discoveries of an observed claim", async () => {
+    vi.useFakeTimers();
+    jobs = [{ ...job("addition", "kitchen_ticket"), status: "claimed" }];
+    const base = vi.mocked(api).getMockImplementation()!;
+    vi.mocked(api).mockImplementation(async (path, options) => path.startsWith("/orders/printing/pending?")
+      ? { branch_id: 7, items: [], next_after_order_id: null } : base(path, options));
+    const printing = new OrderPrinting(7, new AbortController().signal, vi.fn());
+    const initial = printing.run(12); await vi.advanceTimersByTimeAsync(1600); await initial;
+    const reads = vi.mocked(api).mock.calls.filter(([path]) => path === "/orders/12/printing").length;
+    const first = printing.discover();
+    expect(printing.discover()).toBe(first);
+    expect(printing.discover()).toBe(first);
+    await first; await vi.advanceTimersByTimeAsync(0);
+    expect(vi.mocked(api).mock.calls.filter(([path]) => path === "/orders/12/printing").length - reads).toBe(2);
+    await vi.advanceTimersByTimeAsync(30000);
+    expect(vi.mocked(api).mock.calls.filter(([path]) => path === "/orders/12/printing").length - reads).toBe(2);
+    expect(qzBridge.dispatch).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it("manual printing submits only the requested job and permits another deliberate copy", async () => {

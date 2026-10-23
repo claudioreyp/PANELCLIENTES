@@ -61,14 +61,14 @@ export function DeliveryPage() {
   async function assign() {
     if (!assigning) return;
     try {
-      await api(`/delivery/orders/${assigning.order.id}/assign`, { method: "POST", body: JSON.stringify({ courier_id: courierId }) });
+      await api(`/delivery/orders/${assigning.order.id}/assign`, { method: "POST", body: JSON.stringify({ courier_id: courierId, expected_version: assigning.order.version }) });
       setAssigning(null); await resource.refresh(); setToast({ message: "Repartidor asignado.", tone: "success" });
     } catch (caught) { setToast({ message: caught instanceof Error ? caught.message : "No se pudo asignar", tone: "error" }); }
   }
 
   async function transition(row: DeliveryRow, status: string) {
     try {
-      await api(`/delivery/orders/${row.order.id}/transition`, { method: "POST", body: JSON.stringify({ status }) });
+      await api(`/delivery/orders/${row.order.id}/transition`, { method: "POST", body: JSON.stringify({ status, expected_version: row.order.version }) });
       await resource.refresh();
     } catch (caught) { setToast({ message: caught instanceof Error ? caught.message : "No se pudo actualizar", tone: "error" }); }
   }

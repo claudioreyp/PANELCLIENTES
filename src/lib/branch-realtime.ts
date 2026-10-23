@@ -2,11 +2,11 @@ import { supabase } from "./supabase";
 import { API_ORIGIN, CAN_USE_DEV_AUTH } from "./runtime";
 import { QueryCache } from "./query-cache";
 
-type Connection = { listeners: Set<() => void>; stop: () => void; closeTimer?: ReturnType<typeof setTimeout> };
+type Connection = { listeners: Set<(event?: string) => void>; stop: () => void; closeTimer?: ReturnType<typeof setTimeout> };
 const scopes = new WeakMap<object, Map<number, Connection>>();
 export const defaultRealtimeScope = {};
 
-export function subscribeBranch(scope: object, branchId: number, callback: () => void) {
+export function subscribeBranch(scope: object, branchId: number, callback: () => void, includeConnected = false) {
   let connections = scopes.get(scope);
   if (!connections) { connections = new Map(); scopes.set(scope, connections); }
   let connection = connections.get(branchId);
@@ -15,7 +15,7 @@ export function subscribeBranch(scope: object, branchId: number, callback: () =>
     let retry: ReturnType<typeof setTimeout> | undefined;
     let stopped = false;
     let generation = 0;
-    const listeners = new Set<() => void>();
+    const listeners = new Set<(event?: string) => void>();
     async function connect() {
       const current = ++generation;
       try {
@@ -36,8 +36,8 @@ export function subscribeBranch(scope: object, branchId: number, callback: () =>
           try { event = JSON.parse(message.data).event; } catch { /* Revalidate malformed notifications safely. */ }
           if (event !== "connected") {
             if (scope instanceof QueryCache) scope.invalidate();
-            listeners.forEach((listener) => listener());
           }
+          listeners.forEach((listener) => listener(event));
         };
         websocket.onclose = (event) => {
           if (stopped || current !== generation) return;
@@ -63,9 +63,10 @@ export function subscribeBranch(scope: object, branchId: number, callback: () =>
   const entry = connection;
   const registry = connections;
   clearTimeout(entry.closeTimer);
-  entry.listeners.add(callback);
+  const listener = (event?: string) => { if (event !== "connected" || includeConnected) callback(); };
+  entry.listeners.add(listener);
   return () => {
-    entry.listeners.delete(callback);
+    entry.listeners.delete(listener);
     if (!entry.listeners.size) entry.closeTimer = setTimeout(() => {
       if (!entry.listeners.size) { entry.stop(); registry.delete(branchId); }
     }, 0);

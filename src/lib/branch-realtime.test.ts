@@ -11,6 +11,20 @@ class FakeSocket {
 }
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); FakeSocket.sockets = []; });
 describe("branch realtime connections", () => {
+  it("notifies opted-in printing consumers on connection and reconnection without extra sockets", async () => {
+    vi.useFakeTimers(); vi.stubGlobal("WebSocket", FakeSocket);
+    const scope = {}, print = vi.fn(), list = vi.fn();
+    const offPrint = subscribeBranch(scope, 1, print, true);
+    const offList = subscribeBranch(scope, 1, list);
+    await vi.advanceTimersByTimeAsync(0);
+    FakeSocket.sockets[0].onmessage?.({ data: '{"event":"connected"}' });
+    expect(print).toHaveBeenCalledTimes(1); expect(list).not.toHaveBeenCalled();
+    FakeSocket.sockets[0].onclose?.({ code: 1006 });
+    await vi.advanceTimersByTimeAsync(4000);
+    FakeSocket.sockets[1].onmessage?.({ data: '{"event":"connected"}' });
+    expect(print).toHaveBeenCalledTimes(2); expect(list).not.toHaveBeenCalled();
+    offPrint(); offList(); await vi.advanceTimersByTimeAsync(0);
+  });
   it.each([1008, 1013])("only confirmed revocation invalidates access (socket %i)", async (code) => {
     vi.useFakeTimers(); vi.stubGlobal("WebSocket", FakeSocket);
     const invalidated = vi.fn();

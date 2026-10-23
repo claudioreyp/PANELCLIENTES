@@ -163,6 +163,7 @@ export type OrderRecentAgentAddition = {
 };
 
 export type Order = {
+  overpayment_amount?: number;
   id: number;
   business_id: number;
   branch_id: number;
@@ -202,6 +203,7 @@ export type Order = {
 };
 
 export type OrderWorkspaceItem = {
+  overpayment_amount?: number;
   id: number;
   number: string;
   folio?: number | null;
@@ -261,6 +263,7 @@ export type OrderRefund = {
 };
 
 export type OrderFinancialSummary = {
+  overpayment_amount?: number;
   collected: number;
   refunded: number;
   net_collected: number;
@@ -284,6 +287,8 @@ export type OrderDetail = Order & {
 };
 
 export type PaymentEvidence = {
+  requires_financial_review?: boolean;
+  financial_review?: { kind: string; original_expected_amount: number; current_total: number; order_version?: number; revision?: number; quote_id?: string | null } | null;
   id: number;
   order_id: number;
   provider: string;
@@ -306,6 +311,9 @@ export type PaymentEvidence = {
 };
 
 export type OrderPaymentRequest = {
+  resolution_note?: string | null;
+  resolved_at?: string | null;
+  blocked_reason?: string | null;
   id: string;
   order_id: number;
   purpose: "addition" | "delivery";
@@ -314,6 +322,23 @@ export type OrderPaymentRequest = {
   status: string;
   version: number;
   items: { name: string; quantity: string; variant_name?: string | null }[];
+};
+
+export type AgentAttention = {
+  id: string;
+  business_id: number;
+  branch_id: number;
+  order_id: number | null;
+  kind: string;
+  summary: string;
+  sender: string;
+  details: Record<string, unknown>;
+  status: "pending" | "acknowledged" | "resolved";
+  version: number;
+  created_at: string;
+  resolved_at: string | null;
+  resolved_by: string | null;
+  resolution_note: string | null;
 };
 
 export type RestaurantTable = {
