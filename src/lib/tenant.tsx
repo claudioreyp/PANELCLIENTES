@@ -30,6 +30,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   const { user, signOut } = useAuth();
   const userId = user?.id;
   const requestVersion = useRef(0);
+  const accessCheck = useRef({ attempted: false, pending: false, blocked: false });
   const signOutRef = useRef(signOut);
   signOutRef.current = signOut;
   const [context, setContext] = useState<RestaurantContext | null>(null);
@@ -63,6 +64,10 @@ export function TenantProvider({ children }: { children: ReactNode }) {
         await signOutRef.current();
         return;
       }
+      if (caught && typeof caught === "object" && "status" in caught && caught.status === 403) {
+        setContext(null);
+        setBranch(null);
+      }
       setConnectionRetryAttempt((current) => (
         isConnectionError(caught)
           ? Math.min(current + 1, CONNECTION_RETRY_DELAYS_MS.length + 1)
@@ -75,6 +80,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   }, [userId]);
 
   const refresh = useCallback(async () => {
+    accessCheck.current = { attempted: false, pending: false, blocked: false };
     setConnectionRetryAttempt(0);
     await loadContext();
   }, [loadContext]);
@@ -92,10 +98,29 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   }, [userId, refresh]);
 
   useEffect(() => {
-    const checkAccess = () => { void refresh(); };
+    const checkAccess = () => {
+      const check = accessCheck.current;
+      if (!userId || check.pending || check.blocked) return;
+      // Remounting a denied resource must not trigger an endless context reload.
+      // A second failure pauses the workspace until an explicit access refresh.
+      if (check.attempted) {
+        check.blocked = true;
+        requestVersion.current++;
+        setContext(null);
+        setBranch(null);
+        setLoading(false);
+        setConnectionRetryAttempt(0);
+        setError("No pudimos verificar los permisos. Actualiza el acceso para continuar o vuelve a iniciar sesión.");
+        return;
+      }
+      check.attempted = true;
+      check.pending = true;
+      setConnectionRetryAttempt(0);
+      void loadContext().finally(() => { check.pending = false; });
+    };
     window.addEventListener("pos:access-invalidated", checkAccess);
     return () => window.removeEventListener("pos:access-invalidated", checkAccess);
-  }, [refresh]);
+  }, [loadContext, userId]);
 
   useEffect(() => {
     if (!user || !error || connectionRetryAttempt < 1 || connectionRetryAttempt > CONNECTION_RETRY_DELAYS_MS.length) {

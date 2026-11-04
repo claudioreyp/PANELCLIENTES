@@ -5,9 +5,9 @@ import { useTenant } from "../lib/tenant";
 import type { OrderDetail, OrderPaymentRequest, PaymentEvidence } from "../types";
 import { Money, StatusPill } from "./ui";
 
-function EvidenceCard({ evidence, request, working, mayReview, initialPaid, onReview }: {
+function EvidenceCard({ evidence, request, working, mayReview, initialPaid, kitchenAlreadyReleased, onReview }: {
   evidence: PaymentEvidence; request?: OrderPaymentRequest; working: boolean; mayReview: boolean;
-  initialPaid: boolean; onReview: (approve: boolean, evidence: PaymentEvidence, financialReview?: { note: string; confirmed_amount: number }) => Promise<void>;
+  initialPaid: boolean; kitchenAlreadyReleased: boolean; onReview: (approve: boolean, evidence: PaymentEvidence, financialReview?: { note: string; confirmed_amount: number }) => Promise<void>;
 }) {
   const [image, setImage] = useState<string | null>(null);
   const [error, setError] = useState(false);
@@ -49,7 +49,7 @@ function EvidenceCard({ evidence, request, working, mayReview, initialPaid, onRe
       </div>}
       {request && !initialPaid && reviewable && <p>Primero aprueba el comprobante del pedido original.</p>}
       {mayReview && reviewable && <div className="review-actions">
-        <button type="button" className="button button-success" disabled={working || Boolean(request && !initialPaid) || Boolean(evidence.requires_financial_review && !financialReviewComplete)} onClick={() => void onReview(true, evidence, evidence.requires_financial_review ? { note: reviewNote.trim(), confirmed_amount: Number(confirmedAmount) } : undefined)}><CheckCircle2 />{request?.purpose === "delivery" ? "Aprobar pago del envío" : request ? "Aprobar pago y agregar productos" : "Aprobar pago y preparar"}</button>
+        <button type="button" className="button button-success" disabled={working || Boolean(request && !initialPaid) || Boolean(evidence.requires_financial_review && !financialReviewComplete)} onClick={() => void onReview(true, evidence, evidence.requires_financial_review ? { note: reviewNote.trim(), confirmed_amount: Number(confirmedAmount) } : undefined)}><CheckCircle2 />{request?.purpose === "delivery" ? "Aprobar pago del envío" : request ? "Aprobar pago y agregar productos" : kitchenAlreadyReleased ? "Aprobar pago" : "Aprobar pago y preparar"}</button>
         <button type="button" className="button button-danger" disabled={working} onClick={() => void onReview(false, evidence)}><XCircle /> Rechazar comprobante</button>
       </div>}
     </div>
@@ -62,7 +62,9 @@ export function OrderEvidenceHistory({ order, working, onReview }: {
   const { context } = useTenant();
   const mayReview = [context?.role, ...(context?.roles || [])].some((role) => ["superadmin", "owner", "manager", "cashier"].includes(role || ""));
   const evidence = order.payment_evidences || (order.payment_evidence ? [order.payment_evidence] : []);
+  const kitchenAlreadyReleased = ["agent", "n8n", "whatsapp", "whatsapp_agent"].includes(order.source || "")
+    && Boolean(order.sent_to_kitchen_at || order.kitchen_tickets?.length);
   const initialPaid = order.payment_method !== "yape" || evidence.some((item) => !item.payment_request_id && item.status === "paid");
   return <>{evidence.map((item) => <EvidenceCard key={item.id} evidence={item} working={working} mayReview={mayReview}
-    initialPaid={initialPaid} request={order.payment_requests?.find((request) => request.id === item.payment_request_id)} onReview={onReview} />)}</>;
+    initialPaid={initialPaid} kitchenAlreadyReleased={kitchenAlreadyReleased} request={order.payment_requests?.find((request) => request.id === item.payment_request_id)} onReview={onReview} />)}</>;
 }

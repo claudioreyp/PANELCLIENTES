@@ -60,6 +60,7 @@ function Probe() {
     <div>
       <span>{tenant.loading ? "Cargando" : tenant.context?.business.name || "Sin contexto"}</span>
       {tenant.error && <span>{tenant.error}</span>}
+      <button type="button" onClick={() => void tenant.refresh()}>Actualizar acceso</button>
     </div>
   );
 }
@@ -109,6 +110,53 @@ describe("TenantProvider", () => {
     });
 
     expect(apiMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops repeated access invalidations, clears private context and permits explicit recovery", async () => {
+    apiMock.mockResolvedValue(context);
+    render(<TenantProvider><Probe /></TenantProvider>);
+    await screen.findByText("Pizza House");
+
+    await act(async () => window.dispatchEvent(new Event("pos:access-invalidated")));
+    expect(apiMock).toHaveBeenCalledTimes(2);
+    expect(screen.getByText("Pizza House")).toBeInTheDocument();
+
+    await act(async () => window.dispatchEvent(new Event("pos:access-invalidated")));
+    expect(apiMock).toHaveBeenCalledTimes(2);
+    expect(screen.getByText("Sin contexto")).toBeInTheDocument();
+    expect(screen.getByText(/No pudimos verificar los permisos/)).toBeInTheDocument();
+    await act(async () => {
+      for (let i = 0; i < 5; i++) window.dispatchEvent(new Event("pos:access-invalidated"));
+    });
+    expect(apiMock).toHaveBeenCalledTimes(2);
+
+    fireEvent.click(screen.getByRole("button", { name: "Actualizar acceso" }));
+    await screen.findByText("Pizza House");
+    expect(apiMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("coalesces simultaneous access failures while checking the current permissions", async () => {
+    let resolveContext!: (next: RestaurantContext) => void;
+    apiMock.mockResolvedValueOnce(context).mockImplementationOnce(() => new Promise<RestaurantContext>((resolve) => { resolveContext = resolve; }));
+    render(<TenantProvider><Probe /></TenantProvider>);
+    await screen.findByText("Pizza House");
+    act(() => {
+      for (let i = 0; i < 5; i++) window.dispatchEvent(new Event("pos:access-invalidated"));
+    });
+    expect(apiMock).toHaveBeenCalledTimes(2);
+    expect(screen.getByText("Cargando")).toBeInTheDocument();
+    await act(async () => resolveContext(context));
+    expect(screen.getByText("Pizza House")).toBeInTheDocument();
+  });
+
+  it.each([401, 403])("removes a previously loaded context when its recheck returns %i", async (status) => {
+    apiMock.mockResolvedValueOnce(context).mockRejectedValueOnce(Object.assign(new Error("Acceso denegado"), { status }));
+    render(<TenantProvider><Probe /></TenantProvider>);
+    await screen.findByText("Pizza House");
+    await act(async () => window.dispatchEvent(new Event("pos:access-invalidated")));
+    expect(screen.queryByText("Pizza House")).not.toBeInTheDocument();
+    expect(screen.getByText("Sin contexto")).toBeInTheDocument();
+    expect(signOutMock).toHaveBeenCalledTimes(status === 401 ? 1 : 0);
   });
 
   it("keeps zone memory while children unmount and the same authenticated user refreshes", async () => {

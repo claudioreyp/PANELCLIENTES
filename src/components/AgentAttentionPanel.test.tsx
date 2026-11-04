@@ -112,6 +112,26 @@ it("displays financial history to a dispatcher without offering resolution", asy
   expect(mocked.mock.calls[0][0]).toBe("/agent-attention?branch_id=2&status=all&order_id=27");
 });
 
+it("shows the requested original-payment change without changing payments or resolving the review", () => {
+  render(<AgentAttentionEntry item={{ ...item, order_id: 27, kind: "financial_review", details: { kind: "original_payment_method_change", from_method: "yape", requested_method: "cash" } }} mayResolve onSaved={vi.fn()} />);
+  fireEvent.click(screen.getByText(item.summary));
+  expect(screen.getByText(/Cambio solicitado:/)).toHaveTextContent("Cambio solicitado: de Yape a Efectivo.");
+  expect(screen.getByText(/Esta revisión no modifica cobros/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Marcar revisada" })).toBeDisabled();
+  expect(mocked).not.toHaveBeenCalled();
+});
+
+it.each([
+  { kind: "original_payment_method_change", from_method: "yape", requested_method: "tarjeta" },
+  { kind: "fulfillment_amount_changed", from_method: "yape", requested_method: "cash" },
+])("does not invent or expose an unsupported original-payment request: %j", details => {
+  render(<AgentAttentionEntry item={{ ...item, kind: "financial_review", details }} mayResolve onSaved={vi.fn()} />);
+  fireEvent.click(screen.getByText(item.summary));
+  expect(screen.queryByText(/Cambio solicitado:/)).not.toBeInTheDocument();
+  expect(screen.getByText(/Esta revisión no modifica cobros/)).toBeInTheDocument();
+  expect(mocked).not.toHaveBeenCalled();
+});
+
 it("rejects an attention record from another branch", async () => {
   mocked.mockResolvedValue([{ ...item, branch_id: 3 }]);
   render(<AgentAttentionPanel />);

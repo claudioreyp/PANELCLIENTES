@@ -525,15 +525,19 @@ export function OrdersPage() {
       return;
     }
     const request = detail.payment_requests?.find((item) => item.id === selected.payment_request_id);
+    const kitchenAlreadyReleased = ["agent", "n8n", "whatsapp", "whatsapp_agent"].includes(detail.source || "")
+      && Boolean(detail.sent_to_kitchen_at || detail.kitchen_tickets?.length);
     const question = approve && selected.requires_financial_review
       ? `¿Confirmas que verificaste el importe real de S/ ${financialReview!.confirmed_amount.toFixed(2)} frente al total actual de S/ ${detail.total.toFixed(2)}? Se conservará cualquier saldo o exceso para revisión; no se devuelve dinero automáticamente.`
       : approve
       ? request?.purpose === "delivery" ? "¿Confirmas que el comprobante cubre el costo de envío? No se enviarán productos a cocina."
         : request ? "¿Confirmas el pago del extra? Solo los productos adicionales pasarán a cocina."
-          : "¿Confirmas que el monto y los datos del comprobante son correctos? El pedido pasará a cocina."
+          : kitchenAlreadyReleased ? "¿Confirmas que el monto y los datos del comprobante son correctos? Se aprobará el pago; el pedido conserva su estado actual."
+            : "¿Confirmas que el monto y los datos del comprobante son correctos? El pedido pasará a cocina."
       : request ? "¿Rechazar este comprobante adicional? El pedido original y sus pagos se conservan."
-        : detail.payment_requests?.length ? "¿Rechazar el comprobante original? Las adiciones quedarán pendientes de revisión, sin enviarse a cocina."
-          : "¿Rechazar este comprobante? El pedido se cancelará y el stock reservado será revertido.";
+        : kitchenAlreadyReleased ? "¿Rechazar este comprobante? El pedido conserva su estado y su pago sigue pendiente."
+          : detail.payment_requests?.length ? "¿Rechazar el comprobante original? Las adiciones quedarán pendientes de revisión, sin enviarse a cocina."
+            : "¿Rechazar este comprobante? El pedido se cancelará y el stock reservado será revertido.";
     if (!window.confirm(question)) return;
     reviewIntent.current = resolveIdempotentIntent(reviewIntent.current, signature, JSON.stringify({ approve, expected_version: detail.version, ...(approve && selected.requires_financial_review ? financialReview : {}) }));
     reviewingEvidence.current = true;
@@ -547,10 +551,12 @@ export function OrdersPage() {
       const message = approve
         ? request?.purpose === "delivery" ? "Pago del envío aprobado."
           : request ? "Pago aprobado y adición enviada a cocina."
-            : "Pago aprobado y pedido enviado a preparación."
+            : kitchenAlreadyReleased ? "Pago aprobado. El pedido conserva su estado actual."
+              : "Pago aprobado y pedido enviado a preparación."
         : request ? "Comprobante adicional rechazado. El pedido original se conserva."
-          : detail.payment_requests?.length ? "Comprobante original rechazado. Revisa las adiciones pendientes."
-            : "Comprobante rechazado y stock liberado.";
+          : kitchenAlreadyReleased ? "Comprobante rechazado. El pedido conserva su estado y el pago sigue pendiente."
+            : detail.payment_requests?.length ? "Comprobante original rechazado. Revisa las adiciones pendientes."
+              : "Comprobante rechazado y stock liberado.";
       setToast({ message: message + (approve && result.notification?.queued ? " Aviso al cliente en cola." : ""), tone: "success" });
       void refreshOrder(detail.id);
     } catch (caught) {

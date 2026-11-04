@@ -10,6 +10,7 @@ import "./agent-attention.css";
 
 const labels = { pending: "Pendiente", acknowledged: "Revisada · seguimiento pendiente", resolved: "Resuelta" };
 const financeRoles = ["owner", "manager", "cashier", "superadmin"];
+const paymentMethodLabel = (value: unknown) => value === "yape" ? "Yape" : value === "cash" ? "Efectivo" : null;
 
 function AttentionReceipt({ attentionId, mediaRef, index }: { attentionId: string; mediaRef: string; index: number }) {
   const [open, setOpen] = useState(false);
@@ -48,6 +49,8 @@ export function AgentAttentionEntry({ item, mayResolve, onSaved, onOpenOrder }: 
   const intent = useRef<{ key: string; body: string } | null>(null);
   const locked = useRef(false);
   const mounted = useRef(true);
+  const fromMethod = paymentMethodLabel(item.details.from_method);
+  const requestedMethod = paymentMethodLabel(item.details.requested_method);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
   async function resolve(status: "acknowledged" | "resolved") {
@@ -72,6 +75,7 @@ export function AgentAttentionEntry({ item, mayResolve, onSaved, onOpenOrder }: 
     <summary><AlertTriangle aria-hidden="true" /><span><strong>{item.summary}</strong><small>{labels[item.status]}{item.order_id === null ? " · Sin pedido registrado" : ""}</small></span></summary>
     <div className="agent-attention-content">
       <p><time dateTime={item.created_at}>{formatPosDate(item.created_at, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}</time>{item.sender && <> · WhatsApp: {item.sender}</>}</p>
+      {item.kind === "financial_review" && item.details.kind === "original_payment_method_change" && fromMethod && requestedMethod && <p>Cambio solicitado: de <strong>{fromMethod}</strong> a <strong>{requestedMethod}</strong>.</p>}
       {item.kind === "financial_review" && <p>Esta revisión no modifica cobros, saldos ni devoluciones. Comprueba los importes en el pedido.</p>}
       {item.kind === "late_payment_receipt" && <p>Comprobante recibido fuera del horario de atención. No hay pedido ni pago aprobado. Revisar esta incidencia no registra un pedido ni confirma el pago.</p>}
       {item.kind === "late_payment_receipt" && mayResolve && Array.isArray(item.details.attachments) && item.details.attachments.flatMap((value, index) => {
