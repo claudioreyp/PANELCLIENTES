@@ -3,12 +3,15 @@ import { qzBridge } from "./qz-tray";
 import { renderThermalDocument, type ThermalPrintTemplate } from "./thermal-print";
 import type { KitchenTicket, OrderDetail } from "../types";
 import type { ManualPrintRequest } from "./print-events";
+import { PrintPolicyError, PrintRetryPolicy, type PrintAttemptOutcome } from "./print-retry-policy";
 
 export type PosPrintJob = {
   id: string; order_id: number; branch_id: number;
   job_type: "customer_receipt" | "kitchen_ticket";
   status: "pending" | "claimed" | "printed" | "failed" | "cancelled";
   retryable: boolean;
+  attempts?: number;
+  created_at?: string;
   payload: {
     snapshot_version: 1; printer_name: string; paper_width_mm: 58 | 80; copies: number;
     print_language?: "pixel" | "escpos";
@@ -20,7 +23,8 @@ export type PosPrintJob = {
 type PrintingResponse = { order_id: number; items: PosPrintJob[]; recoverable_error: boolean };
 type Completion = { terminal_id: string; claim_token: string; outcome: "printed" | "not_sent" | "unknown" };
 type PendingAck = { path: string; body: Completion; key: string };
-export type PrintNotice = { orderId: number; folio?: number | null; busy: boolean; message: string; retryable: boolean; warning: boolean };
+export type PrintNotice = { orderId: number; folio?: number | null; busy: boolean; message: string; retryable: boolean; warning: boolean; jobIds?: string[] };
+type DispatchResult = { outcome: PrintAttemptOutcome; error?: unknown };
 
 function printingError(error: unknown): string {
   if (!(error instanceof ApiError)) return error instanceof Error ? error.message : "No se pudo verificar la impresión.";
@@ -54,12 +58,62 @@ export class OrderPrinting {
   private awaitingConfirmation = new Map<number, string | undefined>();
   private reconciliationEpoch = new Map<number, number>();
   private reconciliations = new Map<number, { epoch: number; task: Promise<void> }>();
+  private retryPolicy?: PrintRetryPolicy;
+  private retryTimer?: ReturnType<typeof setTimeout>;
+  private noticeJobs = new Map<number, string[]>();
+  private explicitPublishing = new Set<number>();
+  private policyFailed = false;
+  private retryWakeups = new Set<string>();
 
-  constructor(private branchId: number, private signal: AbortSignal, private notify: (notice: PrintNotice) => void) {
+  constructor(private branchId: number, private signal: AbortSignal, private notify: (notice: PrintNotice) => void, private businessId?: number) {
+    if (businessId != null) {
+      try { this.retryPolicy = new PrintRetryPolicy(businessId, branchId); }
+      catch { this.policyFailure(); }
+    }
     signal.addEventListener("abort", () => {
       this.awaitingConfirmation.clear();
       this.reconciliationEpoch.clear();
+      clearTimeout(this.retryTimer);
     }, { once: true });
+    this.scheduleRetries();
+  }
+
+  dismiss(notice: PrintNotice) {
+    if (notice.jobIds?.length) void this.retryPolicy?.dismiss(notice.jobIds, this.signal).catch(() => this.policyFailure());
+  }
+
+  private policyFailure() {
+    if (!this.policyFailed && !this.signal.aborted) {
+      this.policyFailed = true;
+      this.publish(0, "No se pudo guardar el control de impresión automática. Puedes reimprimir manualmente desde el pedido.", false, false, true);
+    }
+  }
+
+  private clearAutomaticSeen(orderId: number) {
+    for (const key of this.seen) if (key.startsWith(`${orderId}:`)) this.seen.delete(key);
+  }
+
+  private scheduleRetries() {
+    clearTimeout(this.retryTimer);
+    if (!this.retryPolicy || this.signal.aborted || this.policyFailed) return;
+    try {
+      const pending = this.retryPolicy.retries().filter(retry => !this.retryWakeups.has(`${retry.jobId}:${retry.at}`));
+      if (!pending.length) return;
+      const at = Math.min(...pending.map(retry => retry.at));
+      this.retryTimer = setTimeout(() => {
+        const due = pending.filter(retry => retry.at <= Date.now());
+        due.forEach(retry => this.retryWakeups.add(`${retry.jobId}:${retry.at}`));
+        const ready = [...new Set(due.map(retry => retry.orderId))];
+        void (async () => {
+          for (const orderId of ready) {
+            if (this.signal.aborted) return;
+            this.clearAutomaticSeen(orderId);
+            await this.run(orderId);
+          }
+          this.scheduleRetries();
+        })();
+      }, Math.max(0, at - Date.now()));
+    } catch { this.policyFailure(); }
   }
 
   discover(): Promise<void> {
@@ -74,6 +128,10 @@ export class OrderPrinting {
 
   private async discoverPages() {
     try {
+      if (this.retryPolicy && !this.policyFailed) {
+        const ready = [...new Set(this.retryPolicy.retries().filter(retry => retry.at <= Date.now()).map(retry => retry.orderId))];
+        for (const orderId of ready) { this.clearAutomaticSeen(orderId); await this.run(orderId); }
+      }
       // A completed claim disappears from the pending queue without changing
       // the order version. Refresh only claims this scope already observed.
       for (const orderId of [...this.awaitingConfirmation.keys()]) {
@@ -138,22 +196,33 @@ export class OrderPrinting {
     if (!explicit && this.seen.has(confirmation)) return Promise.resolve();
     this.seen.add(confirmation);
     this.reconciliationEpoch.set(orderId, (this.reconciliationEpoch.get(orderId) || 0) + 1);
-    const task = this.process(orderId, explicit).finally(() => this.active.delete(orderId));
+    const task = this.process(orderId, explicit).finally(() => { this.active.delete(orderId); this.scheduleRetries(); });
     this.active.set(orderId, task);
     return task;
   }
 
   private publish(orderId: number, message: string, busy = false, retryable = false, warning = false) {
-    if (!this.signal.aborted) this.notify({ orderId, folio: this.folios.get(orderId), message, busy, retryable, warning });
+    const jobIds = this.noticeJobs.get(orderId);
+    if (!this.explicitPublishing.has(orderId) && jobIds?.length && this.retryPolicy) {
+      try { if (this.retryPolicy.isDismissed(jobIds)) return; }
+      catch { this.policyFailure(); return; }
+    }
+    if (!this.signal.aborted) this.notify({ orderId, folio: this.folios.get(orderId), message, busy, retryable, warning,
+      ...(jobIds?.length ? { jobIds } : {}) });
   }
 
   private async readJobs(orderId: number) {
     const response = await api<PrintingResponse>(`/orders/${orderId}/printing`, { signal: this.signal });
     this.signal.throwIfAborted();
-    if (response.order_id !== orderId || !Array.isArray(response.items) || response.items.some((job) => job.branch_id !== this.branchId || job.order_id !== orderId)) {
+    if (response.order_id !== orderId || !Array.isArray(response.items) || response.items.some((job) => job.branch_id !== this.branchId || job.order_id !== orderId
+      || (this.businessId != null && job.payload.order.business_id !== this.businessId))) {
       throw new Error("La API devolvió una impresión de otra sucursal o un contrato incompatible.");
     }
     if (response.items.length) this.folios.set(orderId, response.items[0].payload.order.folio ?? null);
+    if (this.retryPolicy && !this.policyFailed) {
+      try { for (const job of response.items) await this.retryPolicy.observe(job, this.signal); }
+      catch { if (!this.signal.aborted) this.policyFailure(); }
+    }
     return response;
   }
 
@@ -229,9 +298,10 @@ export class OrderPrinting {
     this.acknowledgements.delete(jobId);
   }
 
-  private async dispatch(job: PosPrintJob, explicit: boolean) {
+  private async dispatch(job: PosPrintJob, explicit: boolean): Promise<DispatchResult> {
     const claimToken = crypto.randomUUID();
     let claimed = false;
+    let claimRequested = false;
     let sending = false;
     let outcome: Completion["outcome"] = "not_sent";
     let sendError: unknown;
@@ -246,6 +316,7 @@ export class OrderPrinting {
         jobName: `${job.job_type === "customer_receipt" ? "Ticket" : "Comanda"} - ${payload.order.number}`,
         signal: this.signal,
         beforeSend: async () => {
+          claimRequested = true;
           const result = await api<{ dispatch_allowed: boolean }>(`/orders/${job.order_id}/printing/${job.id}/claim`, {
             method: "POST", signal: this.signal, idempotencyKey: `print-claim-${claimToken}`,
             body: JSON.stringify({ terminal_id: this.terminal, claim_token: claimToken, retry_not_sent: explicit && job.retryable }),
@@ -261,15 +332,19 @@ export class OrderPrinting {
       outcome = sending ? "unknown" : "not_sent";
     }
     if (claimed) {
-      await this.acknowledge(job.id, {
-        path: `/orders/${job.order_id}/printing/${job.id}/complete`, key: `print-complete-${claimToken}`,
-        body: { terminal_id: this.terminal, claim_token: claimToken, outcome },
-      });
+      try {
+        await this.acknowledge(job.id, {
+          path: `/orders/${job.order_id}/printing/${job.id}/complete`, key: `print-complete-${claimToken}`,
+          body: { terminal_id: this.terminal, claim_token: claimToken, outcome },
+        });
+      } catch (error) { return { outcome: "unknown", error }; }
     }
-    if (sendError) throw sendError;
+    return { outcome: outcome === "not_sent" && claimRequested && !claimed ? "unknown" : outcome, error: sendError };
   }
 
   private async process(orderId: number, explicit: boolean) {
+    if (!explicit && this.policyFailed) return;
+    if (explicit) this.explicitPublishing.add(orderId);
     try {
       const attempted = new Set<string>();
       const manual = this.manualIntents.get(orderId);
@@ -279,6 +354,7 @@ export class OrderPrinting {
         this.signal.throwIfAborted();
         if (job.order_id !== orderId || job.branch_id !== this.branchId || !job.id) throw new Error("La API devolvió un trabajo incompatible.");
         manual.jobId = job.id;
+        try { this.retryPolicy?.markManual(job.id, orderId); } catch { this.policyFailure(); }
       }
       // Retry only the acknowledgement, never a document already submitted to QZ.
       for (const [jobId, ack] of this.acknowledgements) {
@@ -294,21 +370,54 @@ export class OrderPrinting {
         if (explicit) this.publish(orderId, "No hay trabajos automáticos pendientes. Revisa que Impresión avanzada y ambos documentos estén activados para los próximos pedidos.");
         return;
       }
-      this.publish(orderId, "Enviando los documentos pendientes a la impresora...", true);
+      let eligibleJobs: PosPrintJob[];
+      try {
+        eligibleJobs = response.items.filter(job => manual ? job.id === manual.jobId && (job.status === "pending" || job.status === "failed" && job.retryable)
+          : explicit ? job.status === "pending" || job.status === "failed" && job.retryable
+            : !this.retryPolicy ? job.status === "pending"
+              : !this.policyFailed && this.retryPolicy.canAttempt(job));
+      } catch { this.policyFailure(); return; }
+      if (this.retryPolicy && !explicit && !eligibleJobs.length && !this.hasPendingAck(orderId)
+        && !response.items.some(job => job.status === "claimed")) return;
+      this.noticeJobs.set(orderId, (manual ? response.items.filter(job => job.id === manual.jobId)
+        : eligibleJobs.length ? eligibleJobs : response.items).map(job => job.id));
+      const observedClaims = new Set(response.items.filter(job => job.status === "claimed").map(job => job.id));
+      let announced = false;
+      const announce = () => {
+        if (!announced) this.publish(orderId, "Enviando los documentos pendientes a la impresora...", true);
+        announced = true;
+      };
+      if (!this.retryPolicy || explicit) announce();
       let failure = "";
       // API IDs are not a document order: always finish the receipt (and cut)
       // before sending kitchen documents, preserving their relative sequence.
       const ordered = [...response.items].sort((a, b) => Number(a.job_type === "kitchen_ticket") - Number(b.job_type === "kitchen_ticket"));
       for (const job of ordered) {
         this.signal.throwIfAborted();
-        if (manual && job.id !== manual.jobId) continue;
-        if (job.status !== "pending" && !(explicit && job.status === "failed" && job.retryable)) continue;
-        attempted.add(job.id);
-        try { await this.dispatch(job, explicit); }
-        catch (error) { failure = printingError(error); }
+        if (!eligibleJobs.some(eligible => eligible.id === job.id)) continue;
+        try {
+          if (!explicit && this.retryPolicy) {
+            const outcome = await this.retryPolicy.attempt(job, this.signal, retry => { announce(); return this.dispatch(job, retry); });
+            if (!outcome.attempted) continue;
+            attempted.add(job.id);
+            if (outcome.result.error) failure = printingError(outcome.result.error);
+          } else {
+            attempted.add(job.id);
+            const outcome = await this.dispatch(job, explicit);
+            if (outcome.error) failure = printingError(outcome.error);
+          }
+        }
+        catch (error) {
+          if (error instanceof PrintPolicyError) { this.policyFailure(); return; }
+          failure = printingError(error);
+        }
       }
       this.signal.throwIfAborted();
       response = await this.readJobs(orderId);
+      if (this.retryPolicy && !explicit) {
+        response.items = response.items.filter(job => attempted.has(job.id) || observedClaims.has(job.id));
+        if (!response.items.length) return;
+      }
       if (manual) {
         response.items = response.items.filter((job) => job.id === manual.jobId);
         if (!response.items.length) throw new Error("No se pudo verificar el documento solicitado. Reintenta para consultar su estado.");
@@ -343,6 +452,6 @@ export class OrderPrinting {
         return;
       }
       this.publish(orderId, `El pedido sigue registrado. ${printingError(error)}`, false, true, true);
-    }
+    } finally { this.explicitPublishing.delete(orderId); }
   }
 }

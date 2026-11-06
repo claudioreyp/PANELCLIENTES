@@ -1,12 +1,20 @@
-.print-notifications { position: fixed; right: 20px; bottom: 20px; z-index: 220; display: grid; gap: 12px; width: min(440px, calc(100vw - 32px)); max-height: 42vh; overflow-y: auto; pointer-events: none; }
-.print-notification { display: flex; align-items: flex-start; gap: 12px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; color: var(--ink); background: var(--paper); }
-.print-notification.is-warning > svg { color: var(--amber-500); }
-.print-notification > svg { flex: 0 0 20px; margin-top: 3px; }
+.print-notifications { position: fixed; right: 20px; bottom: 20px; z-index: 220; display: grid; gap: 10px; width: min(420px, calc(100vw - 32px)); max-height: 42vh; overflow-y: auto; overscroll-behavior: contain; pointer-events: none; scrollbar-width: thin; scrollbar-color: #c9cecb transparent; }
+.print-notification { display: flex; align-items: flex-start; gap: 12px; padding: 14px; border: 1px solid var(--line, #e5e5e5); border-radius: 12px; color: var(--ink, #262626); background: var(--paper, #fff); pointer-events: auto; }
+.print-notification-icon { display: grid; place-items: center; flex: 0 0 32px; width: 32px; height: 32px; border-radius: 8px; color: #606460; background: #f5f5f5; }
+.print-notification-icon svg { width: 18px; height: 18px; }
+.print-notification.is-warning .print-notification-icon { color: #82570d; background: #fff2b4; }
 .print-notification > div { min-width: 0; flex: 1; }
-.print-notification p { font-size: .875rem; line-height: 1.5; margin-bottom: 0; overflow-wrap: anywhere; }
-.print-notification p > strong { display: block; margin-bottom: 4px; }
+.print-notification-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 4px 0 6px; }
+.print-notification-heading > strong { font-size: 1rem; font-weight: 550; }
+.print-notification-state { display: inline-flex; align-items: center; gap: 4px; color: #606460; font-size: .875rem; }
+.print-notification-state svg { width: 14px; height: 14px; }
+.print-notification.is-warning .print-notification-state { color: #82570d; }
+.print-notification p { font-size: 1rem; line-height: 1.45; margin: 0; overflow-wrap: anywhere; }
 .print-notification .button { margin-top: 12px; }
-.print-notification .icon-button { flex-shrink: 0; }
+.print-notification-close { flex-shrink: 0; width: 36px; min-height: 36px; }
+.print-notification-close svg { width: 18px; height: 18px; }
 .print-notification button { pointer-events: auto; }
-@media (max-width: 600px) { .print-notifications { right: 16px; bottom: 16px; } }
+.print-notification button:focus-visible { outline: 2px solid #25824f; outline-offset: 2px; }
+@media (max-width: 600px), (pointer: coarse) { .print-notification-close { width: 44px; min-height: 44px; } }
+@media (max-width: 600px) { .print-notifications { right: 16px; bottom: 16px; } .print-notification { gap: 8px; padding: 12px; } }
 @media print { .print-notifications { display: none !important; } }

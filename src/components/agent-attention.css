@@ -1,13 +1,31 @@
-.agent-attention-panel { margin: 12px 0; padding: 12px 16px; border: 1px solid #e6be73; border-radius: 9px; background: #fff8e8; color: #583d18; }
-.agent-attention-panel h3 { margin: 0 0 8px; font-size: 1rem; }
-.agent-attention-overview { max-height: min(40vh, 360px); overflow: auto; }
+.agent-attention-panel { margin: 12px 0 20px; border: 1px solid var(--line); border-radius: 12px; background: #fff; color: var(--ink); }
+.agent-attention-panel h3 { margin: 0; padding: 13px 16px; font-size: 1rem; font-weight: 600; border-bottom: 1px solid var(--line); }
+.agent-attention-overview { max-height: min(36vh, 320px); overflow: auto; scrollbar-color: #a7a7a7 #fff; scrollbar-width: thin; }
 .agent-attention-overview:focus-visible { outline: 2px solid #25824f; outline-offset: 3px; }
-.agent-attention-entry + .agent-attention-entry { border-top: 1px solid #e6be73; }
-.agent-attention-entry summary { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; cursor: pointer; }
-.agent-attention-entry summary svg { flex: 0 0 18px; width: 18px; height: 18px; margin-top: 2px; }
-.agent-attention-entry summary span { min-width: 0; overflow-wrap: anywhere; }
-.agent-attention-entry summary small { display: block; margin-top: 4px; }
+.agent-attention-entry { position: relative; }
+.agent-attention-entry + .agent-attention-entry { border-top: 1px solid var(--line); }
+.agent-attention-entry summary { display: flex; gap: 10px; align-items: center; padding: 12px 62px 12px 16px; cursor: pointer; list-style: none; }
+.agent-attention-entry summary::-webkit-details-marker { display: none; }
+.agent-attention-entry summary:hover { background: #fafafa; }
+.agent-attention-entry summary > svg { flex: 0 0 17px; width: 17px; height: 17px; color: #82570d; }
+.agent-attention-summary { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.agent-attention-summary strong { display: block; font-size: 1rem; font-weight: 550; line-height: 1.4; }
+.agent-attention-summary small { display: flex; flex-wrap: wrap; column-gap: 4px; row-gap: 2px; margin-top: 3px; color: #666; font-size: .875rem; line-height: 1.4; }
+.agent-attention-status { margin-left: 6px; color: #82570d; }
+.agent-attention-status::before { content: "·"; margin-right: 6px; color: #666; }
+.agent-attention-entry summary > .agent-attention-chevron { color: #666; width: 15px; height: 15px; flex-basis: 15px; }
+.agent-attention-entry details[open] .agent-attention-chevron { transform: rotate(180deg); }
+.agent-attention-content { padding: 0 62px 14px 43px; font-size: 1rem; }
 .agent-attention-content p { margin: 8px 0; overflow-wrap: anywhere; }
+.agent-attention-description { max-width: 75ch; line-height: 1.5; }
+.agent-attention-close { position: absolute; top: 10px; right: 12px; display: grid; place-items: center; width: 36px; height: 36px; padding: 8px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: #666; }
+.agent-attention-close svg { width: 18px; height: 18px; }
+.agent-attention-close:hover { border-color: var(--line); background: #f5f5f5; color: var(--ink); }
+.agent-attention-close:disabled { opacity: .45; cursor: default; }
+.agent-attention-close:focus-visible { outline: 2px solid #25824f; outline-offset: 2px; }
+.agent-attention-feedback { padding: 0 16px 12px 43px; font-size: .875rem; }
+.agent-attention-feedback p { margin: 0 0 8px; max-width: 75ch; color: #a22529; }
+.agent-attention-panel > [role="alert"] { padding: 12px 16px; }
 .agent-attention-review { display: grid; gap: 10px; margin: 10px 0; }
 .agent-attention-review label { display: grid; gap: 6px; }
 .agent-attention-review textarea { width: 100%; min-height: 68px; resize: vertical; }
@@ -15,3 +33,9 @@
 .agent-attention-entry summary:focus-visible { outline: 2px solid #25824f; outline-offset: 3px; }
 .agent-attention-receipt { margin: 10px 0; }
 .agent-attention-receipt img { display: block; max-width: 100%; max-height: 480px; object-fit: contain; margin-top: 10px; }
+@media (pointer: coarse), (max-width: 640px) {
+  .agent-attention-close { top: 7px; right: 8px; width: 44px; height: 44px; }
+  .agent-attention-entry summary { padding-right: 62px; }
+  .agent-attention-content, .agent-attention-feedback { padding-left: 16px; padding-right: 16px; }
+  .agent-attention-status { margin-left: 0; }
+}

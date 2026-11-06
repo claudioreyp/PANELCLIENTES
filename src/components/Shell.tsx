@@ -119,7 +119,7 @@ export function Shell({ children }: { children: ReactNode }) {
         </header>
         <main className="main-content">{children}</main>
       </div>
-      {branch && user && <PrintNotifications key={`${user.id}:${context?.business.id}:${branch.id}`} branchId={branch.id} automatic={assignedRoles.some((role) => ["superadmin", "owner", "manager", "cashier", "waiter"].includes(role))} />}
+      {branch && user && <PrintNotifications key={`${user.id}:${context?.business.id}:${branch.id}`} branchId={branch.id} businessId={context?.business.id} automatic={assignedRoles.some((role) => ["superadmin", "owner", "manager", "cashier", "waiter"].includes(role))} />}
     </div>
   );
 }
