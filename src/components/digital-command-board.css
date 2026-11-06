@@ -10,6 +10,8 @@
 .digital-command-board .command-board-toolbar { gap: 12px; }
 .digital-command-board .command-board-toolbar .button { min-height: 44px; padding: 8px 12px; background: #fff; border-color: var(--command-line); font-size: .9rem; }
 .digital-command-board .command-board-toolbar svg { width: 18px; }
+.digital-command-board .command-board-period { display: flex; flex-wrap: wrap; gap: 4px; }
+.digital-command-board .command-board-period .button[aria-pressed="true"] { color: #205c40; background: #eaf5ee; border-color: #9fc8ad; }
 .digital-command-board .command-board-summary { min-height: 64px; grid-template-columns: 120px minmax(0, 1fr) 120px; border-color: var(--command-line); border-radius: 12px; box-shadow: none; }
 .digital-command-board .command-board-summary > strong { font-size: .95rem; font-weight: 400; }
 .digital-command-board .command-board-summary > span { font-size: .95rem; font-weight: 400; border-color: var(--command-line); }
@@ -64,6 +66,7 @@
   .digital-command-board .command-card-grid { grid-template-columns: 1fr; padding: 12px; gap: 12px; }
   .digital-command-board .command-board-toolbar { align-items: flex-end; }
   .digital-command-board .command-board-toolbar > div { display: flex; flex-wrap: wrap; justify-content: flex-end; }
+  .digital-command-board .command-board-toolbar > .command-board-period { justify-content: flex-start; }
   .digital-command-board .command-board-toolbar .button { width: auto; font-size: .8rem; }
   .digital-command-board .command-board-summary > span { padding-inline: 12px; }
 }

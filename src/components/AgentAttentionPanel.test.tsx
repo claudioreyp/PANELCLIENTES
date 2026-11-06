@@ -6,7 +6,8 @@ import { ApiError } from "../lib/api";
 import { ATTENTION_CLOSE_NOTE, attentionIntentScope } from "../lib/agent-attention-intent";
 import type { AgentAttention } from "../types";
 
-const tenant = vi.hoisted(() => ({ role: "dispatcher", branch: 2 }));
+const tenant = vi.hoisted(() => ({ role: "dispatcher", branch: 2, day: "2026-10-18" }));
+vi.mock("../lib/use-pos-day", () => ({ usePosDay: () => tenant.day }));
 vi.mock("../lib/tenant", () => ({ useTenant: () => ({ branch: { id: tenant.branch }, context: { role: tenant.role, business: { id: 2 } } }) }));
 vi.mock("../lib/auth", () => ({ useAuth: () => ({ user: { id: "operator-1" } }) }));
 vi.mock("../lib/hooks", () => ({ useBranchRealtime: vi.fn() }));
@@ -23,7 +24,7 @@ function blobUrls() {
   return { createObjectURL, revokeObjectURL };
 }
 function openEntry() { fireEvent.click(document.querySelector(".agent-attention-entry summary")!); }
-beforeEach(() => { vi.clearAllMocks(); mocked.mockReset(); mockedImage.mockReset(); localStorage.clear(); tenant.role = "dispatcher"; tenant.branch = 2; });
+beforeEach(() => { vi.clearAllMocks(); mocked.mockReset(); mockedImage.mockReset(); localStorage.clear(); tenant.role = "dispatcher"; tenant.branch = 2; tenant.day = "2026-10-18"; });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 it("shows a catering request without inventing an order or order link", () => {
@@ -300,4 +301,60 @@ it("retains all per-order history even for a manual-order technical notification
   render(<AgentAttentionPanel orderId={27} />);
   await screen.findByText(item.summary);
   expect(screen.getByText("Revisiones del pedido")).toBeInTheDocument();
+});
+
+it("hides only previous technical notices and keeps every important, unknown or undated review", async () => {
+  tenant.role = "owner";
+  const importantKinds = ["financial_review", "late_payment_receipt", "delivery_quote", "fulfillment_change", "location_after_dispatch", "product_change_request", "complaint", "catering", "human_requested", "future_review_kind"];
+  const records = [
+    { ...item, id: "old", kind: "notification_review", created_at: "2026-10-18T04:59:59Z", summary: "Técnico anterior" },
+    { ...item, id: "today", kind: "notification_review", created_at: "2026-10-18T05:00:00Z", summary: "Técnico de hoy" },
+    { ...item, id: "invalid", kind: "notification_review", created_at: "invalid", summary: "Fecha desconocida" },
+    { ...item, id: "usage", kind: "notification_review", created_at: "2026-10-17T15:00:00Z", details: { source: "agent_model_usage" }, summary: "Conexión por revisar" },
+    ...importantKinds.map(kind => ({ ...item, id: kind, kind, created_at: "2026-09-01T15:00:00Z", summary: `Importante ${kind}` })),
+  ];
+  mocked.mockResolvedValue(records);
+  render(<AgentAttentionPanel />);
+  const toggle = await screen.findByRole("button", { name: "Ver anteriores (1)" });
+  expect(screen.queryByText("Técnico anterior")).not.toBeInTheDocument();
+  expect(screen.getByText("Técnico de hoy")).toBeInTheDocument();
+  expect(screen.getByText("Fecha desconocida")).toBeInTheDocument();
+  expect(screen.getByText("Conexión por revisar")).toBeInTheDocument();
+  for (const kind of importantKinds) expect(screen.getByText(`Importante ${kind}`)).toBeInTheDocument();
+  fireEvent.click(toggle);
+  expect(screen.getByText("Técnico anterior")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Ocultar anteriores" }));
+  expect(screen.queryByText("Técnico anterior")).not.toBeInTheDocument();
+  expect(mocked).toHaveBeenCalledOnce();
+  expect(mocked.mock.calls[0][1]?.method).toBeUndefined();
+});
+
+it("keeps previous notices accessible when the daily view is empty and collapses them on the next Lima day", async () => {
+  tenant.role = "owner";
+  mocked.mockResolvedValue([{ ...item, kind: "notification_review", created_at: "2026-10-17T15:00:00Z" }]);
+  const view = render(<AgentAttentionPanel />);
+  fireEvent.click(await screen.findByRole("button", { name: "Ver anteriores (1)" }));
+  expect(screen.getByText(item.summary)).toBeInTheDocument();
+  tenant.day = "2026-10-19";
+  view.rerender(<AgentAttentionPanel />);
+  expect(screen.queryByText(item.summary)).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Ver anteriores (1)" })).toHaveAttribute("aria-expanded", "false");
+  expect(screen.getByText("Avisos pendientes (0)")).toBeInTheDocument();
+  expect(screen.getByText("No hay avisos nuevos. Puedes consultar los anteriores.")).toBeInTheDocument();
+  expect(mocked).toHaveBeenCalledOnce();
+});
+
+it("keeps the existing explicit close available for a previous technical notice", async () => {
+  tenant.role = "owner";
+  const old = { ...item, kind: "notification_review", created_at: "2026-10-17T15:00:00Z" };
+  mocked.mockImplementation(async (path, options) => path.endsWith("/resolve") && options?.method === "POST"
+    ? { ...old, status: "resolved", version: 5 } : [old]);
+  render(<AgentAttentionPanel />);
+  fireEvent.click(await screen.findByRole("button", { name: "Ver anteriores (1)" }));
+  expect(mocked.mock.calls.every(([, options]) => !options?.method)).toBe(true);
+  fireEvent.click(screen.getByRole("button", { name: "Cerrar aviso" }));
+  await waitFor(() => expect(screen.queryByText(item.summary)).not.toBeInTheDocument());
+  const writes = mocked.mock.calls.filter(([, options]) => options?.method === "POST");
+  expect(writes).toHaveLength(1);
+  expect(JSON.parse(writes[0][1]!.body as string)).toEqual({ expected_version: 4, status: "resolved", note: ATTENTION_CLOSE_NOTE });
 });

@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { StrictMode } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, ApiError } from "../lib/api";
 import type { KitchenTicket } from "../types";
 import { CommandCard, DigitalCommandBoard } from "./DigitalCommandBoard";
@@ -16,9 +16,10 @@ const ticket: KitchenTicket = { id: 1, order_id: 42, order_folio: 7, order_numbe
   ], combo_components: [{ product_id: 2, name: "Papas", quantity: 1 }] },
 ] };
 const now = Date.parse("2026-09-08T22:05:12Z");
-const response = (items = [ticket], total = items.length) => ({ items, total, active_count: total, page: 1, page_size: 12, view: "active" });
+const response = (items = [ticket], total = items.length) => ({ items, total, active_count: total, page: 1, page_size: 100, view: "active" });
 
-afterEach(() => { cleanup(); vi.resetAllMocks(); });
+beforeEach(() => { vi.spyOn(Date, "now").mockReturnValue(now); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.resetAllMocks(); });
 describe("digital command cards", () => {
   it("uses complete snapshots, counts units, retains combos and never exposes prices or actor IDs", () => {
     render(<CommandCard ticket={ticket} view="active" now={now} pending={false} onAction={vi.fn()} />);
@@ -78,19 +79,22 @@ describe("command board mutations", () => {
     expect(writes[1][1]?.idempotencyKey).not.toBe(writes[0][1]?.idempotencyKey);
     expect(JSON.parse(String(writes[1][1]?.body)).expected_version).toBe(2);
   });
-  it("preserves a last-page completion when loading the preceding page would fail", async () => {
+  it("returns to the preceding cached page after its last command completes even when refresh fails", async () => {
     let completed = false;
     vi.mocked(api).mockImplementation(async (_path, options) => {
       if (options?.method === "POST") { completed = true; return {}; }
       if (completed) throw new Error("Offline");
-      return response([ticket], 13);
+      return response(Array.from({ length: 13 }, (_, index) => ({ ...ticket, id: index + 1, order_folio: index + 1 })));
     });
     render(<DigitalCommandBoard branchId={1} />);
-    fireEvent.click(await screen.findByRole("button", { name: "Página siguiente" }));
+    await screen.findAllByRole("button", { name: "Completar comanda" });
+    fireEvent.click(screen.getByRole("button", { name: "Página siguiente" }));
     fireEvent.click(await screen.findByRole("button", { name: "Completar comanda" }));
-    expect(await screen.findByText("No hay más comandas en esta página")).toBeVisible();
+    expect(await screen.findByText("12 comandas por preparar")).toBeVisible();
+    expect(screen.getAllByRole("button", { name: "Completar comanda" })).toHaveLength(12);
     expect(screen.getByText("Comanda completada y guardada en el historial.")).toBeVisible();
-    expect(screen.getByRole("button", { name: "Página anterior" })).toBeEnabled();
+    expect(screen.getByText("Página 1 de 1")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Página anterior" })).toBeDisabled();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
   it("keeps a confirmed completion and success even when its refresh fails", async () => {
@@ -123,18 +127,79 @@ describe("command board mutations", () => {
     expect(writes[0][1]?.idempotencyKey).toBe(writes[1][1]?.idempotencyKey);
     expect(JSON.parse(String(writes[1][1]?.body))).toEqual({ expected_status: "queued", expected_version: 1 });
   });
-  it("loads history lazily, paginates twelve and resets on branch change", async () => {
-    vi.mocked(api).mockImplementation(async () => response([ticket], 13));
+  it("shares the active collection across twelve-card pages, loads history lazily and resets on branch change", async () => {
+    vi.mocked(api).mockImplementation(async (path) => path.includes("view=history")
+      ? { ...response([{ ...ticket, status: "ready" }], 13), page_size: 12, view: "history" }
+      : response(Array.from({ length: 13 }, (_, index) => ({ ...ticket, id: index + 1 }))));
     const rendered = render(<DigitalCommandBoard branchId={1} />);
-    await screen.findByRole("button", { name: "Completar comanda" });
-    expect(api).toHaveBeenLastCalledWith(expect.stringContaining("view=active&page=1&page_size=12"));
+    await screen.findAllByRole("button", { name: "Completar comanda" });
+    expect(api).toHaveBeenLastCalledWith(expect.stringContaining("view=active&page=1&page_size=100"));
+    const reads = vi.mocked(api).mock.calls.length;
     fireEvent.click(screen.getByRole("button", { name: "Página siguiente" }));
-    await waitFor(() => expect(api).toHaveBeenLastCalledWith(expect.stringContaining("page=2&page_size=12")));
+    expect(screen.getByText("Página 2 de 2")).toBeVisible();
+    expect(api).toHaveBeenCalledTimes(reads);
     fireEvent.click(await screen.findByRole("button", { name: "Ver historial" }));
     await screen.findByRole("button", { name: "Devolver a preparación" });
-    expect(api).toHaveBeenLastCalledWith(expect.stringContaining("view=history&page=1"));
+    expect(api).toHaveBeenLastCalledWith(expect.stringContaining("view=history&page=1&page_size=12&local_date=2026-09-08"));
+    fireEvent.click(screen.getByRole("button", { name: "Página siguiente" }));
+    await waitFor(() => expect(api).toHaveBeenLastCalledWith(expect.stringContaining("view=history&page=2&page_size=12&local_date=2026-09-08")));
     rendered.rerender(<DigitalCommandBoard branchId={2} />);
-    await screen.findByRole("button", { name: "Completar comanda" });
+    await screen.findAllByRole("button", { name: "Completar comanda" });
     expect(api).toHaveBeenLastCalledWith(expect.stringContaining("branch_id=2&view=active&page=1"));
+  });
+
+  it("separates previous commands from today's additions without extra requests or commercial writes", async () => {
+    const earlier = { ...ticket, id: 2, order_folio: 9, created_at: "2026-09-07T20:00:00Z", fired_at: "2026-09-07T20:00:00Z" };
+    const addition = { ...ticket, id: 3, order_folio: 10, created_at: "2026-09-07T20:00:00Z", fired_at: "2026-09-08T20:00:00Z" };
+    vi.mocked(api).mockResolvedValue(response([earlier, ticket, addition]));
+    render(<DigitalCommandBoard branchId={1} />);
+    await screen.findAllByRole("button", { name: "Completar comanda" });
+    expect(screen.getByText("2 comandas por preparar")).toBeVisible();
+    expect(screen.getByText("#10")).toBeVisible();
+    expect(screen.queryByText("#9")).not.toBeInTheDocument();
+    const reads = vi.mocked(api).mock.calls.length;
+    fireEvent.click(screen.getByRole("button", { name: "Pendientes anteriores" }));
+    expect(screen.getByText("1 comanda por preparar")).toBeVisible();
+    expect(screen.getByText("#9")).toBeVisible();
+    expect(screen.queryByText("#10")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Hoy" }));
+    expect(screen.getByText("2 comandas por preparar")).toBeVisible();
+    expect(api).toHaveBeenCalledTimes(reads);
+    expect(vi.mocked(api).mock.calls.every(([, options]) => !options?.method)).toBe(true);
+  });
+
+  it("keeps the previous complete collection when a later active page cannot be refreshed", async () => {
+    let round = 0;
+    vi.mocked(api).mockImplementation(async (path) => {
+      if (path.includes("page=2")) throw new Error("Falló la segunda página");
+      round++;
+      return round === 1 ? response() : response(Array.from({ length: 100 }, (_, index) => ({ ...ticket, id: index + 1, order_folio: 99 })), 101);
+    });
+    render(<DigitalCommandBoard branchId={1} pollIntervalMs={30} />);
+    await screen.findByText("#7");
+    expect(await screen.findByRole("note", { name: "Estado de actualización" })).toHaveTextContent("segunda página");
+    expect(screen.getByText("#7")).toBeVisible();
+    expect(screen.queryByText("#99")).not.toBeInTheDocument();
+    expect(screen.getByText("1 comanda por preparar")).toBeVisible();
+  });
+
+  it("resets the visual period and page when returning after Lima midnight without completing anything", async () => {
+    const previous = Array.from({ length: 13 }, (_, index) => ({ ...ticket, id: index + 2, created_at: "2026-09-07T20:00:00Z" }));
+    vi.mocked(api).mockResolvedValue(response([ticket, ...previous]));
+    render(<DigitalCommandBoard branchId={1} />);
+    await screen.findByRole("button", { name: "Completar comanda" });
+    fireEvent.click(screen.getByRole("button", { name: "Pendientes anteriores" }));
+    fireEvent.click(screen.getByRole("button", { name: "Página siguiente" }));
+    expect(screen.getByText("Página 2 de 2")).toBeVisible();
+    const reads = vi.mocked(api).mock.calls.length;
+    vi.mocked(Date.now).mockReturnValue(Date.parse("2026-09-09T05:00:00Z"));
+    fireEvent.focus(window);
+    expect(await screen.findByText("No hay comandas por preparar")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Hoy" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("Página 1 de 1")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Pendientes anteriores" }));
+    expect(screen.getByText("14 comandas por preparar")).toBeVisible();
+    expect(api).toHaveBeenCalledTimes(reads);
+    expect(vi.mocked(api).mock.calls.every(([, options]) => !options?.method)).toBe(true);
   });
 });

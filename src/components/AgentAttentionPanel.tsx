@@ -8,6 +8,8 @@ import { QueryCache } from "../lib/query-cache";
 import { ATTENTION_CLOSE_NOTE, attentionIntentScope, clearAttentionClose, readAttentionClose, saveAttentionClose } from "../lib/agent-attention-intent";
 import { useBranchRealtime } from "../lib/hooks";
 import { formatPosDate } from "../lib/pos-dates";
+import { posTimestampDay } from "../lib/pos-day";
+import { usePosDay } from "../lib/use-pos-day";
 import type { AgentAttention, Order } from "../types";
 import "./agent-attention.css";
 
@@ -166,6 +168,10 @@ function AttentionEntries({ rows, mayFinance, dispatcher, keepResolved, onSaved,
 
 export function AgentAttentionPanel({ orderId, onOpenOrder }: { orderId?: number; onOpenOrder?: (id: number) => void }) {
   const { branch, context } = useTenant();
+  const day = usePosDay();
+  const [previousScope, setPreviousScope] = useState<string | null>(null);
+  const dailyScope = `${context?.business.id}:${branch?.id}:${day}`;
+  const showPrevious = previousScope === dailyScope;
   const sharedCache = useQuerySession();
   const [localCache] = useState(() => new QueryCache());
   const cache = sharedCache || localCache;
@@ -195,11 +201,22 @@ export function AgentAttentionPanel({ orderId, onOpenOrder }: { orderId?: number
   }, 30000, enabled);
   useBranchRealtime(enabled ? branch?.id : undefined, () => { void query.refresh(); });
   if (!enabled) return null;
-  const rows = (query.data || []).filter(row => orderId || !isManualNotification(row));
-  if (!rows.length && !query.error) return null;
+  const allRows = (query.data || []).filter(row => orderId || !isManualNotification(row));
+  const isPrevious = ({ item }: AttentionRow) => {
+    const itemDay = posTimestampDay(item.created_at);
+    return !orderId && item.kind === "notification_review" && item.details.source !== "agent_model_usage"
+      && itemDay !== null && itemDay < day;
+  };
+  const previousCount = allRows.filter(isPrevious).length;
+  const rows = showPrevious ? allRows : allRows.filter(row => !isPrevious(row));
+  if (!allRows.length && !query.error) return null;
   const onResolved = (saved: AgentAttention) => query.setData(current => current?.flatMap(row => row.item.id !== saved.id || row.item.version > saved.version ? [row] : orderId ? [{ ...row, item: saved }] : []) || null);
   return <section className={`agent-attention-panel${orderId ? "" : " agent-attention-overview"}`} tabIndex={orderId ? undefined : 0} aria-label={orderId ? "Revisiones del agente de este pedido" : "Atención del agente"}>
-    <h3>{orderId ? "Revisiones del pedido" : `Avisos pendientes (${rows.length})`}</h3>
+    <div className="agent-attention-heading">
+      <h3>{orderId ? "Revisiones del pedido" : `Avisos pendientes (${rows.length})`}</h3>
+      {!orderId && previousCount > 0 && <button type="button" className="button button-secondary" aria-expanded={showPrevious} onClick={() => setPreviousScope(showPrevious ? null : dailyScope)}>{showPrevious ? "Ocultar anteriores" : `Ver anteriores (${previousCount})`}</button>}
+    </div>
+    {!rows.length && previousCount > 0 && <p className="agent-attention-empty">No hay avisos nuevos. Puedes consultar los anteriores.</p>}
     {query.error && <div role="alert"><p>No se pudieron actualizar las incidencias. {query.error}</p><button type="button" className="button button-secondary" onClick={() => void query.refresh()}>Reintentar incidencias</button></div>}
     {rows.length > 0 && <AttentionEntries rows={rows} mayFinance={mayFinance} dispatcher={roles.includes("dispatcher")} keepResolved={Boolean(orderId)} onSaved={query.refresh} onResolved={onResolved} onOpenOrder={onOpenOrder} />}
   </section>;

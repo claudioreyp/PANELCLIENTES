@@ -15,6 +15,8 @@ import { useBranchRealtime } from "../lib/hooks";
 import { useQuery } from "../lib/query-session";
 import { commandModifiedAt, modificationLabel as modifiedLabel } from "../lib/order-presentation";
 import { formatPosDate, parsePosDate } from "../lib/pos-dates";
+import { commandsForPeriod, COMMAND_PAGE_SIZE as PAGE_SIZE, loadActiveCommands, type CommandPeriod } from "../lib/digital-command-data";
+import { usePosDay } from "../lib/use-pos-day";
 import type { KitchenCommandResponse, KitchenTicket } from "../types";
 import { EmptyState, ErrorState, LoadingState } from "./ui";
 import { OrderBreakdown } from "./OrderBreakdown";
@@ -35,10 +37,9 @@ type CommandResource = {
   branchId: number;
   page: number;
   view: CommandView;
+  day?: string;
   response: KitchenCommandResponse;
 };
-
-const PAGE_SIZE = 12;
 
 function errorMessage(caught: unknown, fallback: string) {
   return caught instanceof Error && caught.message ? caught.message : fallback;
@@ -209,19 +210,24 @@ function BranchCommandBoard({
   const actionIntents = useRef(new Map<string, string>());
   const inFlight = useRef(false);
   const mounted = useRef(false);
-  const [view, setView] = useState<CommandView>("active");
-  const [page, setPage] = useState(1);
+  const day = usePosDay();
+  const [navigation, setNavigation] = useState<{ day: string; view: CommandView; period: CommandPeriod; page: number }>({ day, view: "active", period: "today", page: 1 });
+  // Deriving the new-day default before loading avoids a history fetch at the
+  // boundary and keeps the active collection in the same cache entry.
+  const currentNavigation = navigation.day === day ? navigation : { day, view: "active" as const, period: "today" as const, page: 1 };
+  const { view, period } = currentNavigation;
   const [now, setNow] = useState(Date.now());
   const [pendingTicket, setPendingTicket] = useState<number | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
   const [toast, setToast] = useState<{ message: string; tone: "success" | "error" } | null>(null);
 
-  const resource = useQuery<CommandResource>(["commands", branchId, view, page], async () => {
+  const resourcePage = view === "history" ? currentNavigation.page : 1;
+  const resource = useQuery<CommandResource>(view === "active" ? ["commands", branchId, "active"] : ["commands", branchId, "history", day, resourcePage], async () => {
     if (!branchId) throw new Error("Selecciona una sucursal para ver sus comandas.");
-    const response = await api<KitchenCommandResponse>(
-      `/kitchen/commands?branch_id=${branchId}&view=${view}&page=${page}&page_size=${PAGE_SIZE}`,
+    const response = view === "active" ? await loadActiveCommands(branchId) : await api<KitchenCommandResponse>(
+      `/kitchen/commands?branch_id=${branchId}&view=history&page=${resourcePage}&page_size=${PAGE_SIZE}&local_date=${day}`,
     );
-    return { branchId, view, page, response };
+    return { branchId, view, page: resourcePage, day: view === "history" ? day : undefined, response };
   }, pollIntervalMs);
 
   useBranchRealtime(branchId, resource.refresh);
@@ -252,13 +258,31 @@ function BranchCommandBoard({
 
   const hasCurrentData = resource.data?.branchId === branchId
     && resource.data?.view === view
-    && resource.data?.page === page;
+    && (view === "active" || (resource.data?.page === resourcePage && resource.data.day === day));
   const response = hasCurrentData ? resource.data?.response : null;
-  const totalPages = Math.max(1, Math.ceil((response?.total || 0) / PAGE_SIZE));
+  const groupItems = view === "active" ? commandsForPeriod(response?.items || [], day, period) : response?.items || [];
+  const total = view === "active" ? groupItems.length : response?.total || 0;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const page = view === "active" ? Math.min(currentNavigation.page, totalPages) : currentNavigation.page;
+  const visibleItems = view === "active" ? groupItems.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE) : groupItems;
+
+  useEffect(() => {
+    if (view !== "active" || !hasCurrentData || currentNavigation.page <= totalPages) return;
+    setNavigation((current) => current.day === day && current.view === "active"
+      ? { ...current, page: totalPages } : current);
+  }, [view, hasCurrentData, currentNavigation.page, totalPages, day]);
+
+  function setPage(nextPage: number) {
+    setNavigation({ ...currentNavigation, page: nextPage });
+  }
 
   function changeView(nextView: CommandView) {
-    setView(nextView);
-    setPage(1);
+    setNavigation({ ...currentNavigation, view: nextView, page: 1 });
+    setToast(null);
+  }
+
+  function changePeriod(nextPeriod: CommandPeriod) {
+    setNavigation({ ...currentNavigation, period: nextPeriod, page: 1 });
     setToast(null);
   }
 
@@ -348,7 +372,12 @@ function BranchCommandBoard({
           <button className="command-board-back" type="button" onClick={() => changeView("active")}>
             <ChevronLeft /> Regresar a comandas digitales
           </button>
-        ) : <span />}
+        ) : (
+          <div className="command-board-period" role="group" aria-label="Periodo de comandas">
+            <button className="button button-secondary" type="button" aria-pressed={period === "today"} onClick={() => changePeriod("today")}>Hoy</button>
+            <button className="button button-secondary" type="button" aria-pressed={period === "previous"} onClick={() => changePeriod("previous")}>Pendientes anteriores</button>
+          </div>
+        )}
         <div>
           {view === "active" && (
             <button className="button button-secondary" type="button" onClick={() => changeView("history")}>
@@ -363,18 +392,18 @@ function BranchCommandBoard({
       </header>
 
       <div className="command-board-summary">
-        <span><CalendarDays /> Hoy</span>
+        <span><CalendarDays /> {view === "active" && period === "previous" ? "Anteriores" : "Hoy"}</span>
         <strong>
           {view === "active"
-            ? `${response?.active_count || 0} ${(response?.active_count || 0) === 1 ? "comanda" : "comandas"} por preparar`
+            ? `${total} ${total === 1 ? "comanda" : "comandas"} por preparar`
             : `${response?.total || 0} ${(response?.total || 0) === 1 ? "comanda completada" : "comandas completadas"} hoy`}
         </strong>
       </div>
 
       <div className="command-board-canvas" aria-busy={resource.loading}>
-        {response?.items.length ? (
+        {visibleItems.length ? (
           <div className="command-card-grid">
-            {response.items.map((ticket) => (
+            {visibleItems.map((ticket) => (
               <CommandCard
                 key={ticket.id}
                 ticket={ticket}
@@ -388,15 +417,15 @@ function BranchCommandBoard({
           </div>
         ) : (
           <EmptyState
-            title={page > 1 ? "No hay más comandas en esta página" : view === "active" ? "No hay comandas por preparar" : "No hay comandas en el historial de hoy"}
-            detail={page > 1 ? "Vuelve a la página anterior para ver las demás comandas." : view === "active" ? "Las nuevas comandas aparecerán aquí automáticamente." : "Las comandas completadas hoy aparecerán en este espacio."}
+            title={page > 1 ? "No hay más comandas en esta página" : view === "active" ? period === "previous" ? "No hay comandas pendientes anteriores" : "No hay comandas por preparar" : "No hay comandas en el historial de hoy"}
+            detail={page > 1 ? "Vuelve a la página anterior para ver las demás comandas." : view === "active" ? period === "previous" ? "Las comandas de días anteriores que sigan pendientes aparecerán aquí." : "Las nuevas comandas aparecerán aquí automáticamente." : "Las comandas completadas hoy aparecerán en este espacio."}
           />
         )}
 
         <footer className="command-board-pagination">
-          <button className="icon-button" type="button" aria-label="Página anterior" disabled={page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}><ChevronLeft /></button>
+          <button className="icon-button" type="button" aria-label="Página anterior" disabled={page <= 1} onClick={() => setPage(Math.max(1, page - 1))}><ChevronLeft /></button>
           <span>Página {page} de {Math.max(page, totalPages)}</span>
-          <button className="icon-button" type="button" aria-label="Página siguiente" disabled={page >= totalPages} onClick={() => setPage((current) => Math.min(totalPages, current + 1))}><ChevronRight /></button>
+          <button className="icon-button" type="button" aria-label="Página siguiente" disabled={page >= totalPages} onClick={() => setPage(Math.min(totalPages, page + 1))}><ChevronRight /></button>
         </footer>
       </div>
 
