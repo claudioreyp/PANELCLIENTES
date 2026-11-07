@@ -44,7 +44,7 @@ describe("independent shipping collection", () => {
     render(<OrderDeliveryFee order={order} onSaved={vi.fn()} />);
     expect(screen.getByText("Envío por cotizar")).toBeVisible();
     expect(screen.queryByRole("button")).toBeNull();
-    expect(nextAction(order)).toBeNull();
+    expect(nextAction(order)).toMatchObject({ kind: "dispatched", disabledReason: "Confirma el costo de envío antes de continuar." });
   });
   it("offers fulfillment only for the matching ready WhatsApp modality", () => {
     expect(nextAction({ ...order, delivery_fee_status: "final", channel: "takeaway" })?.label).toBe("Marcar recogido");

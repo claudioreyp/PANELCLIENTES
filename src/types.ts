@@ -310,7 +310,15 @@ export type PaymentEvidence = {
   created_at: string;
 };
 
+export type EvidenceReviewDetails = {
+  note: string;
+  confirmed_amount: number;
+  allocation?: "original" | "original_and_delivery";
+};
+
 export type OrderPaymentRequest = {
+  collection_pending_with_courier?: boolean;
+  payment_id?: number | null;
   resolution_note?: string | null;
   resolved_at?: string | null;
   blocked_reason?: string | null;

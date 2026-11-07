@@ -11,22 +11,41 @@ export function hasOpenPaymentEvidence(order: OrderDetail) {
     || ["evidence_received", "under_review"].includes(order.payment_status);
 }
 
-export function nextAction(order: OrderDetail) {
-  if (hasOpenPaymentEvidence(order)) return null;
-  if (["draft", "pending_confirmation", "confirmed"].includes(order.status) && order.items.some(isActiveOrderItem)) return { label: "Enviar a cocina", kind: "kitchen" };
-  if (order.status === "sent_to_kitchen") return null;
-  if (order.status === "preparing") return null;
-  const pendingRequests = (order.payment_requests || []).some((request) =>
-    request.purpose === "addition" ? ["pending", "under_review", "awaiting_base_review", "requires_review"].includes(request.status)
-      : order.channel === "delivery" && !["superseded", "waived", "cancelled"].includes(request.status) && (request.method === "unselected" || (request.method === "yape" && request.status !== "paid")));
-  if (pendingRequests || order.delivery_fee_status === "pending_quote") return null;
-  if (order.status === "ready" && order.channel === "delivery") return { label: "Despachar delivery", kind: "dispatched" };
+export function activePaymentRequests(order: OrderDetail) {
+  return (order.payment_requests || []).filter(request => !["superseded", "waived", "cancelled", "declined"].includes(request.status));
+}
+
+export function pendingDeliveryPayment(order: OrderDetail) {
+  const requests = activePaymentRequests(order).filter(request => request.purpose === "delivery");
+  return requests.length === 1 && requests[0].status !== "paid" && !requests[0].payment_id ? requests[0] : undefined;
+}
+
+type OrderNextAction = { label: string; kind: string; disabledReason?: string; requiresCourierCollection?: boolean };
+
+export function nextAction(order: OrderDetail): OrderNextAction | null {
+  let action: OrderNextAction | null = null;
+  if (["draft", "pending_confirmation", "confirmed"].includes(order.status) && order.items.some(isActiveOrderItem)) action = { label: "Enviar a cocina", kind: "kitchen" };
+  if (order.status === "ready" && order.channel === "delivery") action = { label: "Despachar delivery", kind: "dispatched" };
   if (order.status === "ready" && ["agent", "n8n", "whatsapp", "whatsapp_agent"].includes(order.source)) {
-    if (order.channel === "takeaway") return { label: "Marcar recogido", kind: "delivered" };
-    if (order.channel === "counter") return { label: "Marcar servido", kind: "delivered" };
+    if (order.channel === "takeaway") action = { label: "Marcar recogido", kind: "delivered" };
+    if (order.channel === "counter") action = { label: "Marcar servido", kind: "delivered" };
   }
-  if (order.status === "dispatched") return { label: "Marcar entregado", kind: "delivered" };
-  return null;
+  if (order.status === "dispatched") action = { label: "Marcar entregado", kind: "delivered" };
+  if (!action) return null;
+  const evidence = order.payment_evidences || (order.payment_evidence ? [order.payment_evidence] : []);
+  const openEvidence = evidence.filter(item => ["evidence_received", "under_review"].includes(item.status));
+  const requests = activePaymentRequests(order);
+  const blockedReceipt = openEvidence.some(item => action.kind !== "dispatched" || !requests.some(request => request.id === item.payment_request_id && request.purpose === "delivery"));
+  if (blockedReceipt || (!openEvidence.length && ["evidence_received", "under_review"].includes(order.payment_status))) return { ...action, disabledReason: "Revisa los comprobantes pendientes antes de continuar." };
+  if (action.kind === "kitchen") return action;
+  if (requests.some(request => request.purpose === "addition" && ["pending", "under_review", "awaiting_base_review", "requires_review"].includes(request.status))) return { ...action, disabledReason: "Resuelve los productos adicionales pendientes antes de continuar." };
+  if (order.delivery_fee_status === "pending_quote") return { ...action, disabledReason: "Confirma el costo de envío antes de continuar." };
+  if (order.channel !== "delivery") return action;
+  if (requests.filter(request => request.purpose === "delivery").length > 1) return { ...action, disabledReason: "Revisa las solicitudes de cobro del envío antes de continuar." };
+  if (requests.some(request => request.purpose === "delivery" && request.method === "unselected")) return { ...action, disabledReason: "Define cómo se cobrará el envío antes de continuar." };
+  if (["agent", "n8n", "whatsapp", "whatsapp_agent"].includes(order.source) && order.payment_method === "yape" && !evidence.some(item => !item.payment_request_id && item.status === "paid")) return { ...action, disabledReason: "Aprueba el pago de los productos antes de continuar." };
+  if (action.kind === "delivered" && requests.some(request => request.purpose === "delivery" && request.method === "yape" && request.status !== "paid")) return { ...action, requiresCourierCollection: true };
+  return action;
 }
 
 export function orderLocation(order: Order) {

@@ -27,7 +27,7 @@ it("requires the amount and a note before financial approval and keeps original 
 
 it.each(["awaiting_base_review", "requires_review"])("blocks dispatch while addition status is %s", status => {
   const pending = { ...order, payment_evidences: [], payment_requests: [{ id: "extra", order_id: 27, purpose: "addition" as const, method: "cash" as const, status, amount: 7, version: 1, items: [{ name: "Agua", quantity: "1" }] }] };
-  expect(nextAction(pending)).toBeNull();
+  expect(nextAction(pending)).toMatchObject({ kind: "dispatched", disabledReason: "Resuelve los productos adicionales pendientes antes de continuar." });
   render(<OrderPendingAdditions order={pending} />);
   expect(screen.getByRole("region", { name: "Estado de productos adicionales" })).toHaveTextContent(/Pendiente de aprobar|requiere revisión/);
 });
@@ -40,7 +40,7 @@ it("cash committed is visible as unpaid and excess stays visible independently o
 });
 
 it.each(["superseded", "waived", "cancelled"])("does not block dispatch on an inactive delivery request: %s", status => {
-  expect(nextAction({ ...order, payment_evidences: [], payment_requests: [{ id: "old", order_id: 27, purpose: "delivery", method: "yape", status, amount: 7, version: 1, items: [] }] })).toEqual({ label: "Despachar delivery", kind: "dispatched" });
+  expect(nextAction({ ...order, payment_evidences: [{ ...evidence, status: "paid" }], payment_requests: [{ id: "old", order_id: 27, purpose: "delivery", method: "yape", status, amount: 7, version: 1, items: [] }] })).toEqual({ label: "Despachar delivery", kind: "dispatched" });
 });
 
 it("retries the exact addition decline after a lost response without changing the original order", async () => {

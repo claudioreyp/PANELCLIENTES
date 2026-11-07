@@ -101,6 +101,7 @@ export function OrdersPage() {
   const printBusy = useRef(false);
   const [toast, setToast] = useState<ToastState>(null);
   const reviewingEvidence = useRef(false);
+  const advancing = useRef(false);
   const reviewIntent = useRef<IdempotentIntent | null>(null);
   useEffect(() => {
     if (!detail || !reviewIntent.current) return;
@@ -281,9 +282,17 @@ export function OrdersPage() {
   }
 
   async function advance(order: OrderDetail) {
-    if (!isCurrentSelection(order)) return;
+    if (!isCurrentSelection(order) || advancing.current) return;
     const action = nextAction(order);
-    if (!action) return;
+    if (!action || action.disabledReason) return;
+    let courierCollection: { delivery_collection: "courier_pending"; reason: string } | undefined;
+    if (action.requiresCourierCollection) {
+      const mayConfirm = [context?.role, ...(context?.roles || [])].some(role => ["superadmin", "owner", "manager", "cashier", "dispatcher"].includes(role || ""));
+      if (!mayConfirm) return;
+      if (!window.confirm("¿Confirmas que el cliente pagó al repartidor? El pedido se marcará entregado; el cobro seguirá pendiente de ingresar en caja. Esta acción no registra un pago.")) return;
+      courierCollection = { delivery_collection: "courier_pending", reason: "Cliente pagó al repartidor; cobro pendiente de ingresar en caja, confirmado desde el POS." };
+    }
+    advancing.current = true;
     setWorking(true);
     try {
       if (action.kind === "kitchen") {
@@ -295,7 +304,7 @@ export function OrdersPage() {
       } else {
         await api(`/orders/${order.id}/transition`, {
           method: "POST",
-          body: JSON.stringify({ status: action.kind, expected_version: order.version }),
+          body: JSON.stringify({ status: action.kind, expected_version: order.version, ...courierCollection }),
         });
       }
       await refreshOrder(order.id);
@@ -306,6 +315,7 @@ export function OrdersPage() {
       if (isDefinitiveClientError(caught)) confirmIntent.current = null;
       setToast({ message: caught instanceof Error ? caught.message : "No se pudo actualizar el pedido.", tone: "error" });
     } finally {
+      advancing.current = false;
       if (isCurrentSelection(order)) setWorking(false);
     }
   }
@@ -516,9 +526,9 @@ export function OrdersPage() {
     }
   }
 
-  async function reviewEvidence(approve: boolean, selected = selectedEvidence || undefined, financialReview?: { note: string; confirmed_amount: number }) {
+  async function reviewEvidence(approve: boolean, selected = selectedEvidence || undefined, financialReview?: import("../types").EvidenceReviewDetails) {
     if (!detail || !isCurrentSelection(detail) || !selected || reviewingEvidence.current) return;
-    if (approve && selected.requires_financial_review && (!financialReview?.note.trim() || !(financialReview.confirmed_amount > 0))) return;
+    if (approve && (selected.requires_financial_review || financialReview?.allocation) && (!financialReview?.note.trim() || !(financialReview.confirmed_amount > 0))) return;
     const signature = `${detail.branch_id}:${detail.id}:${selected.id}:${approve}:${JSON.stringify(financialReview || null)}`;
     if (reviewIntent.current && reviewIntent.current.signature !== signature) {
       setToast({ message: "Hay una revisión sin confirmar. Reintenta con el mismo comprobante, importe y nota antes de registrar otra.", tone: "error" });
@@ -527,7 +537,9 @@ export function OrdersPage() {
     const request = detail.payment_requests?.find((item) => item.id === selected.payment_request_id);
     const kitchenAlreadyReleased = ["agent", "n8n", "whatsapp", "whatsapp_agent"].includes(detail.source || "")
       && Boolean(detail.sent_to_kitchen_at || detail.kitchen_tickets?.length);
-    const question = approve && selected.requires_financial_review
+    const question = approve && financialReview?.allocation
+      ? `¿Confirmas que verificaste S/ ${financialReview.confirmed_amount.toFixed(2)} y que el comprobante cubre ${financialReview.allocation === "original" ? "los productos; el envío seguirá pendiente" : "los productos y el envío"}? Se registrará un solo pago y se conservará el historial de la corrección.${kitchenAlreadyReleased ? " El pedido conserva su estado actual." : " El pedido pasará a cocina."}`
+      : approve && selected.requires_financial_review
       ? `¿Confirmas que verificaste el importe real de S/ ${financialReview!.confirmed_amount.toFixed(2)} frente al total actual de S/ ${detail.total.toFixed(2)}? Se conservará cualquier saldo o exceso para revisión; no se devuelve dinero automáticamente.`
       : approve
       ? request?.purpose === "delivery" ? "¿Confirmas que el comprobante cubre el costo de envío? No se enviarán productos a cocina."
@@ -539,7 +551,7 @@ export function OrdersPage() {
           : detail.payment_requests?.length ? "¿Rechazar el comprobante original? Las adiciones quedarán pendientes de revisión, sin enviarse a cocina."
             : "¿Rechazar este comprobante? El pedido se cancelará y el stock reservado será revertido.";
     if (!window.confirm(question)) return;
-    reviewIntent.current = resolveIdempotentIntent(reviewIntent.current, signature, JSON.stringify({ approve, expected_version: detail.version, ...(approve && selected.requires_financial_review ? financialReview : {}) }));
+    reviewIntent.current = resolveIdempotentIntent(reviewIntent.current, signature, JSON.stringify({ approve, expected_version: detail.version, ...(approve && (selected.requires_financial_review || financialReview?.allocation) ? financialReview : {}) }));
     reviewingEvidence.current = true;
     setWorking(true);
     try {
@@ -549,7 +561,8 @@ export function OrdersPage() {
       reviewIntent.current = null;
       if (!isCurrentSelection(detail)) return;
       const message = approve
-        ? request?.purpose === "delivery" ? "Pago del envío aprobado."
+        ? financialReview?.allocation ? "Aplicación corregida y pago aprobado."
+          : request?.purpose === "delivery" ? "Pago del envío aprobado."
           : request ? "Pago aprobado y adición enviada a cocina."
             : kitchenAlreadyReleased ? "Pago aprobado. El pedido conserva su estado actual."
               : "Pago aprobado y pedido enviado a preparación."

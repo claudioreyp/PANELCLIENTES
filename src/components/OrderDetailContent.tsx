@@ -1,8 +1,9 @@
 import { AgentAttentionPanel } from "./AgentAttentionPanel";
 import { OrderPendingAdditions } from "./OrderPendingAdditions";
 import { ChefHat, ChevronDown, ChevronRight, CircleX, Clipboard, Pencil, ExternalLink, MapPin, MessageCircle, PackageCheck, Plus, Printer, Truck } from "lucide-react";
-import type { KitchenTicket, OrderDetail, PaymentEvidence } from "../types";
-import { appendAllowed, countLabel, formatChannel, hasOpenPaymentEvidence, nextAction, orderLocation } from "../lib/order-detail-model";
+import type { EvidenceReviewDetails, KitchenTicket, OrderDetail, PaymentEvidence } from "../types";
+import { appendAllowed, countLabel, formatChannel, hasOpenPaymentEvidence, nextAction, orderLocation, pendingDeliveryPayment } from "../lib/order-detail-model";
+import { useTenant } from "../lib/tenant";
 import { hasDistinctAgentModification, agentAdditionLabel, deliveryServices, getDeliveryService, isActiveOrderItem, isOrderEditable, whatsappPhone } from "../lib/order-presentation";
 import { formatPosDate } from "../lib/pos-dates";
 import { requestOrderPrinting } from "../lib/print-events";
@@ -31,7 +32,7 @@ type DetailContentProps = {
   onPayment: () => void;
   onReleaseTable?: () => void;
   onAppend: () => void;
-  onReview: (approve: boolean, evidence?: PaymentEvidence, financialReview?: { note: string; confirmed_amount: number }) => Promise<void>;
+  onReview: (approve: boolean, evidence?: PaymentEvidence, financialReview?: EvidenceReviewDetails) => Promise<void>;
   onAdvance: () => void;
   onCancel: () => void;
 };
@@ -41,8 +42,13 @@ function ReceiptAmount({ value }: { value: number }) {
 }
 
 export function OrderDetailContent({ order, onRefresh, deliveryExpanded, working, canEdit, onEdit, onCopy, onEditTicket, onPrintTicket, onDeliveryToggle, onPrint, onPayment, onReleaseTable, onAppend, onReview, onAdvance, onCancel }: DetailContentProps) {
+  const { context } = useTenant();
   const location = orderLocation(order);
   const action = nextAction(order);
+  const mayConfirmCourier = [context?.role, ...(context?.roles || [])].some(role => ["superadmin", "owner", "manager", "cashier", "dispatcher"].includes(role || ""));
+  const actionBlock = action?.disabledReason || (action?.requiresCourierCollection && !mayConfirmCourier ? "Un encargado debe confirmar el cobro pendiente del repartidor." : undefined);
+  const deliveryPayment = pendingDeliveryPayment(order);
+  const separateDeliveryCollection = Boolean(onRefresh && deliveryPayment && Math.abs(order.remaining_amount - deliveryPayment.amount) < 0.005);
   const phone = whatsappPhone(order.customer_phone);
   const canAppend = canEdit && appendAllowed(order);
   const canReleaseTable = canEdit && onReleaseTable && order.channel === "dine_in" && Boolean(order.table_id) && !order.table_released_at && order.remaining_amount === 0 && order.items.some(isActiveOrderItem) && order.status !== "cancelled" && !hasOpenPaymentEvidence(order);
@@ -50,7 +56,7 @@ export function OrderDetailContent({ order, onRefresh, deliveryExpanded, working
   const source = order.source === "pos" ? "Punto de venta" : order.source === "public_store" ? "Menú digital" : ["agent", "integration", "n8n", "whatsapp_agent", "whatsapp"].includes(order.source) ? "WhatsApp" : order.source;
   return <div className="order-detail-content">
     {order.status === "cancelled" && <section className="order-cancellation-notice" role="note"><CircleX aria-hidden="true" /><div><strong>Este pedido fue cancelado</strong><p>{order.cancellation_reason?.trim() || "Motivo no registrado"}</p></div></section>}
-    <section className="order-detail-summary"><div><span>{formatPosDate(order.created_at, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}</span><OrderIdentity {...order} /><h3>{order.customer_name || "Cliente sin nombre"}</h3></div><div className="order-detail-top-actions"><button className="button button-secondary" disabled={working} onClick={onPrint}><Printer /> Imprimir pedido</button>{canEdit && order.remaining_amount > 0 && !["closed", "cancelled"].includes(order.status) && !hasOpenPaymentEvidence(order) && <button className="button button-primary" disabled={working} onClick={onPayment}>Cobrar <ReceiptAmount value={order.remaining_amount} /></button>}{canReleaseTable && <button className="button button-primary" disabled={working} onClick={onReleaseTable}>Liberar mesa</button>}<OrderActionsMenu floating label="Acciones del pedido" disabled={working} actions={[
+    <section className="order-detail-summary"><div><span>{formatPosDate(order.created_at, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}</span><OrderIdentity {...order} /><h3>{order.customer_name || "Cliente sin nombre"}</h3></div><div className="order-detail-top-actions"><button className="button button-secondary" disabled={working} onClick={onPrint}><Printer /> Imprimir pedido</button>{canEdit && order.remaining_amount > 0 && !["closed", "cancelled"].includes(order.status) && !hasOpenPaymentEvidence(order) && !separateDeliveryCollection && <button className="button button-primary" disabled={working} onClick={onPayment}>Cobrar <ReceiptAmount value={order.remaining_amount} /></button>}{canReleaseTable && <button className="button button-primary" disabled={working} onClick={onReleaseTable}>Liberar mesa</button>}<OrderActionsMenu floating label="Acciones del pedido" disabled={working} actions={[
       { label: "Editar pedido", icon: <Pencil />, disabled: !canEdit || !isOrderEditable(order), onSelect: onEdit },
       { label: "Copiar pedido", icon: <Clipboard />, onSelect: onCopy },
       { label: "Revisar impresión automática", icon: <Printer />, disabled: !canEdit, onSelect: () => requestOrderPrinting({ orderId: order.id, branchId: order.branch_id, review: true }) },
@@ -69,6 +75,6 @@ export function OrderDetailContent({ order, onRefresh, deliveryExpanded, working
     <OrderEvidenceHistory order={order} working={working} onReview={onReview} />
     <OrderFinancials order={order} />
     {onRefresh && <OrderDeliveryFee order={order} onSaved={onRefresh} />}
-    {action && canEdit && <section className="order-detail-tools order-detail-tools-actions-only"><button className="button button-primary" disabled={working} onClick={onAdvance}>{action.kind === "kitchen" ? <ChefHat /> : action.kind === "dispatched" ? <Truck /> : <PackageCheck />}{action.label}<ChevronRight /></button></section>}
+    {action && canEdit && <section className="order-detail-tools order-detail-tools-actions-only"><button className="button button-primary" disabled={working || Boolean(actionBlock)} aria-describedby={actionBlock ? `order-transition-reason-${order.id}` : undefined} onClick={onAdvance}>{action.kind === "kitchen" ? <ChefHat /> : action.kind === "dispatched" ? <Truck /> : <PackageCheck />}{action.label}<ChevronRight /></button>{actionBlock && <p id={`order-transition-reason-${order.id}`} role="note">{actionBlock}</p>}</section>}
   </div>;
 }
