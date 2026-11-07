@@ -1,5 +1,5 @@
 import { ArrowRight, ChevronDown, Eye, Minus, Plus, ShoppingBag, TableProperties, Trash2, X } from "lucide-react";
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError, isTransportError } from "../lib/api";
 import { loadOrderDetail } from "../lib/orders";
 import { requestOrderPrinting } from "../lib/print-events";
@@ -19,7 +19,6 @@ import { OrderProductPicker } from "./OrderProductPicker";
 import { OrderBreakdown } from "./OrderBreakdown";
 import { draftOrderPresentation } from "../lib/order-presentation";
 import { emptyDeliveryAddress, parseManualDeliveryFee, serializeDeliveryAddress } from "../lib/order-delivery";
-import { useOrderDelivery, type DeliveryFeeConfirmation } from "../lib/use-order-delivery";
 import { NewOrderDeliveryFields } from "./NewOrderDeliveryFields";
 
 export type NewOrderCompletion = {
@@ -60,13 +59,12 @@ export function NewOrderDrawer({ branch, catalog, onClose, onCreated, onError, i
   const [customerPhone, setCustomerPhone] = useState("");
   const [deliveryAddress, setDeliveryAddress] = useState(emptyDeliveryAddress);
   const [feeInput, setFeeInput] = useState("");
-  const [feeConfirmation, setFeeConfirmation] = useState<DeliveryFeeConfirmation | null>(null);
   const [deliveryError, setDeliveryError] = useState<string | null>(null);
   const [commentEnabled, setCommentEnabled] = useState(false);
   const [notes, setNotes] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [checkout, setCheckout] = useState<{ scope: string; identity: symbol; total: number; fee: number } | null>(null);
+  const [checkout, setCheckout] = useState<{ scope: string; identity: { signature: string }; total: number; fee: number; pendingDeliveryQuote: boolean } | null>(null);
   const [saving, setSaving] = useState(false);
   const [creationPending, setCreationPending] = useState(false);
   const continueRef = useRef<HTMLButtonElement>(null);
@@ -86,18 +84,17 @@ export function NewOrderDrawer({ branch, catalog, onClose, onCreated, onError, i
     return () => { current.active = false; };
   }, [scope]);
   const destination = serializeDeliveryAddress(deliveryAddress);
-  const delivery = useOrderDelivery({ branchId: branch.id, scope, enabled: channel === "delivery", subtotal, cartSignature: JSON.stringify([cart, pricing.total, feeInput]), destination });
-  const configuredFee = delivery.policy?.mode === "fixed" ? delivery.policy.fixedFee : delivery.policy?.mode === "free" ? 0 : null;
-  const deliveryFee = channel !== "delivery" ? 0 : delivery.quote ? delivery.quote.fee : configuredFee;
+  const draftSignature = JSON.stringify([scope, channel, cart, pricing.total, feeInput, destination]);
+  const draftIdentity = useMemo(() => ({ signature: draftSignature }), [draftSignature]);
+  const pendingDeliveryQuote = channel === "delivery" && feeInput.trim() === "";
+  const deliveryFee = channel === "delivery" ? parseManualDeliveryFee(feeInput) : 0;
   const previewTotal = deliveryFee === null ? null : pricing.total + deliveryFee;
-  const checkoutOpen = checkout !== null && checkout.scope === scope && (creationPending || checkout.identity === delivery.identity);
-  const confirmedFee = feeConfirmation?.identity === delivery.identity && feeConfirmation.version === delivery.policy?.version;
+  const checkoutOpen = checkout !== null && checkout.scope === scope && (creationPending || checkout.identity === draftIdentity);
 
   function requestClose() {
     if (processingRef.current) return;
     if (saveIntent.current?.pending) { onError("Falta verificar la creación del pedido. Reintenta la confirmación para recuperar el mismo pedido antes de cerrar."); return; }
     if (dirty && !window.confirm("¿Cerrar el nuevo pedido? Los cambios que no guardaste se perderán.")) return;
-    delivery.cancel();
     onClose();
   }
 
@@ -105,8 +102,7 @@ export function NewOrderDrawer({ branch, catalog, onClose, onCreated, onError, i
 
   useEffect(() => {
     if (checkoutOpen || !restoreCheckoutFocus.current) return;
-    // Wait for the payment dialog's cleanup. Its opener may have blurred while
-    // Continue was disabled during the asynchronous quote request.
+    // Wait for the payment dialog's cleanup before restoring its opener.
     const timer = window.setTimeout(() => {
       restoreCheckoutFocus.current = false;
       const surface = surfaceRef.current;
@@ -152,54 +148,37 @@ export function NewOrderDrawer({ branch, catalog, onClose, onCreated, onError, i
       onError("Selecciona una mesa antes de guardar el pedido.");
       return false;
     }
-    if (channel === "delivery" && (!customerName.trim() || !customerPhone.trim() || !deliveryAddress.street.trim() || !deliveryAddress.reference.trim())) {
-      onError("Completa el nombre, teléfono, calle y referencias para el delivery.");
+    if (channel === "delivery" && (!customerName.trim() || !customerPhone.trim())) {
+      onError("Completa el nombre y teléfono para el delivery.");
       return false;
     }
     return true;
   }
 
-  async function continueToCheckout() {
+  function continueToCheckout() {
     if (!validateOrder()) return;
     if (creationPending || processingRef.current) return;
     setDeliveryError(null);
-    if (channel !== "delivery") { setCheckout({ scope, identity: delivery.identity, total: pricing.total, fee: 0 }); return; }
-    try {
-      const quote = await delivery.prepare(feeConfirmation);
-      if (!quote) return;
-      if (quote.requires_quote || quote.fee === null) {
-        setDeliveryError("El envío está por cotizar. Ingresa y confirma el costo de envío antes de continuar.");
-        return;
-      }
-      setCheckout({ scope, identity: delivery.identity, total: pricing.total + quote.fee, fee: quote.fee });
-    } catch (error) {
-      setDeliveryError(error instanceof Error ? error.message : "No se pudo cotizar el envío. Vuelve a continuar.");
+    if (!pendingDeliveryQuote && deliveryFee === null) {
+      setDeliveryError("Ingresa un costo de envío de cero o mayor, con hasta dos decimales, o déjalo por cotizar.");
+      return;
     }
+    const fee = deliveryFee ?? 0;
+    setCheckout({ scope, identity: draftIdentity, total: pricing.total + fee, fee, pendingDeliveryQuote });
   }
 
   async function completeOrder(selection: NewOrderCheckoutSelection) {
     if (!validateOrder()) return;
     if (processingRef.current) return;
     if (!checkout || checkout.scope !== scope) return;
+    if (!saveIntent.current?.pending && checkout.identity !== draftIdentity) return;
     if (saveIntent.current?.pending && saveIntent.current.scope !== scope) { onError("Regresa a la sucursal original para recuperar el pedido pendiente de confirmación."); return; }
     const current = lifetime.current;
     const stillHere = () => current.active && lifetime.current === current;
+    const deferPayment = checkout.pendingDeliveryQuote || selection.deferPayment;
     processingRef.current = true;
     setSaving(true);
     try {
-      let quotedFee = checkout.fee;
-      let quoteId: string | undefined;
-      if (!saveIntent.current?.pending && channel === "delivery") {
-        const fresh = await delivery.prepare(feeConfirmation);
-        if (!fresh || !stillHere()) return;
-        if (fresh.requires_quote || fresh.fee === null || Math.abs(fresh.fee - checkout.fee) > 0.009) {
-          setCheckout(null);
-          setDeliveryError(fresh.requires_quote ? "El envío necesita una nueva cotización. Confirma su importe antes de continuar." : "El costo de envío cambió. Revisa el total y vuelve a continuar antes de cobrar.");
-          return;
-        }
-        quotedFee = fresh.fee;
-        quoteId = fresh.id;
-      }
       if (!stillHere()) return;
       const payload = {
         branch_id: branch.id,
@@ -208,8 +187,8 @@ export function NewOrderDrawer({ branch, catalog, onClose, onCreated, onError, i
         customer_name: customerName.trim() || null,
         customer_phone: customerPhone.trim() || null,
         delivery_address: channel === "delivery" ? destination : null,
-        ...(quoteId ? { delivery_quote_id: quoteId } : {}),
-        delivery_fee: quotedFee,
+        delivery_fee: checkout.fee,
+        ...(checkout.pendingDeliveryQuote ? { allow_pending_delivery_quote: true } : {}),
         discount: 0,
         notes: commentEnabled && notes.trim() ? notes.trim() : null,
         items: serializeOrderCart(cart),
@@ -246,7 +225,7 @@ export function NewOrderDrawer({ branch, catalog, onClose, onCreated, onError, i
 
       let expectedVersion = Number(order.version || 1);
       try {
-        for (const payment of selection.deferPayment ? [] : selection.plan.payments) {
+        for (const payment of deferPayment ? [] : selection.plan.payments) {
           if (!stillHere()) return;
           const note = payment.method === "cash" && payment.cashReceived != null
             ? `Efectivo recibido: ${payment.cashReceived.toFixed(2)} PEN. Cambio: ${selection.plan.change.toFixed(2)} PEN.`
@@ -308,7 +287,7 @@ export function NewOrderDrawer({ branch, catalog, onClose, onCreated, onError, i
           onCreated({
             orderId: order.id,
             outcome: "confirmation_failed",
-            message: selection.deferPayment
+            message: deferPayment
               ? "No pudimos confirmar el envío a cocina. Revisa este pedido y usa Enviar a cocina para reintentar sin duplicarlo."
               : "El pago quedó registrado, pero no pudimos verificar el envío a cocina. Revisa el pedido antes de reintentar.",
           });
@@ -321,11 +300,11 @@ export function NewOrderDrawer({ branch, catalog, onClose, onCreated, onError, i
       paymentIntents.current.clear();
       confirmationIntent.current = null;
       if (stillHere()) {
-        onCreated({ orderId: order.id, outcome: selection.deferPayment ? "pending_and_sent" : "paid_and_sent" });
+        onCreated({ orderId: order.id, outcome: deferPayment ? "pending_and_sent" : "paid_and_sent" });
       }
     } catch (caught) {
       // A definitive rejection did not create an order. An uncertain response must
-      // retain the original quote/body/key, even if that quote subsequently expires.
+      // retain the original body/key rather than creating a second order.
       if (caught instanceof ApiError && caught.status >= 400 && caught.status < 500 && caught.status !== 408 && !saveIntent.current?.order) {
         saveIntent.current = null;
         if (channel === "delivery") setCheckout(null);
@@ -369,11 +348,8 @@ export function NewOrderDrawer({ branch, catalog, onClose, onCreated, onError, i
               <section className="new-order-section"><div className="new-order-section-heading"><div><h3>{channel === "delivery" ? "Datos del cliente" : "Cliente"}</h3><p>{channel === "delivery" ? "Necesario para coordinar la entrega." : channel === "takeaway" ? "Opcional para identificar el recojo." : channel === "dine_in" ? "Opcional para identificar la cuenta de la mesa." : "Opcional para identificar el pedido anticipado."}</p></div></div><div className="new-order-two-columns"><label>{channel === "delivery" ? "Nombre del cliente" : "Nombre"} {channel !== "delivery" && <span className="optional-label">opcional</span>}<input value={customerName} onChange={(event) => setCustomerName(event.target.value)} autoComplete="name" /></label><label>{channel === "delivery" ? "Número de teléfono" : "Teléfono"} {channel !== "delivery" && <span className="optional-label">opcional</span>}<input value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} inputMode="tel" autoComplete="tel" /></label></div></section>
 
               {channel === "delivery" && <>
-                <NewOrderDeliveryFields key={scope} value={deliveryAddress} onChange={(value) => { setDeliveryAddress(value); setDeliveryError(null); }} policy={delivery.policy} quote={delivery.quote} loading={delivery.loading} feeInput={feeInput} onFeeInput={(value) => { setFeeInput(value); setFeeConfirmation(null); setDeliveryError(null); }} confirmed={confirmedFee} onConfirmFee={() => {
-                  const fee = parseManualDeliveryFee(feeInput);
-                  if (fee !== null && delivery.policy) setFeeConfirmation({ identity: delivery.identity, version: delivery.policy.version, fee });
-                }} />
-                {(deliveryError || delivery.error) && <p className="new-order-delivery-feedback" role="alert">{deliveryError || delivery.error}</p>}
+                <NewOrderDeliveryFields key={scope} value={deliveryAddress} onChange={(value) => { setDeliveryAddress(value); setDeliveryError(null); }} feeInput={feeInput} onFeeInput={(value) => { setFeeInput(value); setDeliveryError(null); }} />
+                {deliveryError && <p className="new-order-delivery-feedback" role="alert">{deliveryError}</p>}
               </>}
 
               <section className="new-order-section"><label className="new-order-comment-toggle"><input type="checkbox" checked={commentEnabled} onChange={(event) => { setCommentEnabled(event.target.checked); if (!event.target.checked) setNotes(""); }} /><span>Comentario adicional</span></label>{commentEnabled && <textarea aria-label="Comentario adicional" rows={3} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Observación general para cocina o atención" />}</section>
@@ -385,14 +361,14 @@ export function NewOrderDrawer({ branch, catalog, onClose, onCreated, onError, i
               <div className="new-order-preview-total"><span><span>Productos</span><span><Money value={subtotal} /></span></span>{pricing.discount > 0 && <span><span>Descuento</span><span>-<Money value={pricing.discount} /></span></span>}{channel === "delivery" && <span><span>Envío</span><span>{deliveryFee === null ? "Por cotizar" : <Money value={deliveryFee} />}</span></span>}<strong><span>Total</span><span>{previewTotal === null ? <span className="new-order-delivery-pending">Por cotizar</span> : <Money value={previewTotal} />}</span></strong></div>
             </aside>
           </div>
-          <footer className="new-order-footer"><span>Al confirmar, enviaremos la comanda a cocina. Puedes cobrar ahora o después.</span><div><button className="button button-secondary" onClick={requestClose}>Cancelar</button><button ref={continueRef} className="button button-primary" disabled={saving || creationPending || delivery.busy || !cart.length} onClick={() => void continueToCheckout()}>{delivery.busy ? "Cotizando..." : "Continuar"} <ArrowRight /></button></div></footer>
+          <footer className="new-order-footer"><span>Al confirmar, enviaremos la comanda a cocina. Puedes cobrar ahora o después.</span><div><button className="button button-secondary" onClick={requestClose}>Cancelar</button><button ref={continueRef} className="button button-primary" disabled={saving || creationPending || !cart.length} onClick={continueToCheckout}>Continuar <ArrowRight /></button></div></footer>
         </section>
       </div>
       {pickerOpen && <OrderProductPicker catalog={catalog} channel={channel} initialLines={cart} onClose={() => setPickerOpen(false)} onSave={(lines) => { setCart(lines); setPickerOpen(false); }} />}
-      {checkoutOpen && checkout && <NewOrderPaymentModal branch={branch} total={checkout.total} busy={saving} onClose={() => {
+      {checkoutOpen && checkout && <NewOrderPaymentModal branch={branch} total={checkout.total} busy={saving} forceDeferredPayment={checkout.pendingDeliveryQuote} onClose={() => {
         if (saveIntent.current?.pending) { onError("Falta verificar la creación. Reintenta para recuperar el mismo pedido sin duplicarlo."); return; }
         restoreCheckoutFocus.current = true;
-        delivery.cancel(); setCheckout(null);
+        setCheckout(null);
       }} onConfirm={(selection) => void completeOrder(selection)} />}
     </DialogPortal>
   );

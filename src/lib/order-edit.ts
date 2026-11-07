@@ -36,11 +36,12 @@ export function orderEditChanges(order: OrderDetail, initial: OrderEditDraft, dr
   if (fee !== order.delivery_fee) changes.delivery_fee = fee;
   return changes;
 }
-export function validateOrderEdit(draft: OrderEditDraft, changes: Record<string, unknown>) {
+export function validateOrderEdit(draft: OrderEditDraft, changes: Record<string, unknown>, source?: string) {
   if ("customer_phone" in changes && draft.phone.trim() && !whatsappPhone(draft.phone)) return "Revisa el número de teléfono e incluye su prefijo de país.";
   const fulfillmentChanged = ["channel", "delivery_address", "delivery_fee"].some((key) => key in changes);
   if (fulfillmentChanged && draft.channel === "delivery" && draft.service === "own") {
-    if (!draft.name.trim() || !whatsappPhone(draft.phone) || !draft.street.trim() || !draft.reference.trim()) return "Completa nombre, teléfono, calle y referencias para el domicilio propio.";
+    if (source === "pos" && (!draft.name.trim() || !whatsappPhone(draft.phone))) return "Completa nombre y teléfono para el domicilio propio.";
+    if (source !== "pos" && (!draft.name.trim() || !whatsappPhone(draft.phone) || !draft.street.trim() || !draft.reference.trim())) return "Completa nombre, teléfono, calle y referencias para el domicilio propio.";
     if (!draft.fee.trim() || !Number.isFinite(Number(draft.fee)) || Number(draft.fee) < 0) return "Indica un costo de envío válido, igual o mayor que cero.";
   }
   return null;

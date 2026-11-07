@@ -4,11 +4,14 @@ import { parsePosDate, formatPosDate } from "../lib/pos-dates";
 import { orderOverpayment } from "../lib/order-presentation";
 import { OrderPaymentBadge, orderPaymentDisplayStatus } from "./OrderListPanel";
 import "./order-cancellation.css";
+import { isManualDeliveryPending } from "../lib/order-detail-model";
+import { OrderManualDeliveryFee } from "./OrderManualDeliveryFee";
 
 const amount = (value: number) => <>{Number(value).toLocaleString("es-PE", { maximumFractionDigits: 2 })} S/</>;
 const methodLabel = (method: string) => method === "bank_transfer" ? "Transferencia bancaria" : checkoutPaymentMethods.includes(method as CheckoutPaymentMethod) ? paymentMethodLabel(method as CheckoutPaymentMethod) : method;
 
-export function OrderFinancials({ order }: { order: OrderDetail }) {
+export function OrderFinancials({ order, canEditDeliveryFee = false, working, onDeliveryFeeSaved }: { order: OrderDetail; canEditDeliveryFee?: boolean; working?: boolean; onDeliveryFeeSaved?: () => Promise<void> }) {
+  const manualPending = isManualDeliveryPending(order);
   const cancelled = order.status === "cancelled";
   const refunds = order.refunds ?? [];
   const collected = order.financial_summary?.collected ?? order.paid_amount;
@@ -33,6 +36,9 @@ export function OrderFinancials({ order }: { order: OrderDetail }) {
     <div className="order-balance">
       <span><span>Productos</span><span>{amount(order.subtotal)}</span></span>
       {order.delivery_fee > 0 && <span><span>Costo de envío</span><span>{amount(order.delivery_fee)}</span></span>}
+      {manualPending && <div className="order-manual-delivery-row"><span>Costo de envío</span>{canEditDeliveryFee && onDeliveryFeeSaved
+        ? <OrderManualDeliveryFee key={`${order.business_id}:${order.branch_id}:${order.id}`} order={order} disabled={working} onSaved={onDeliveryFeeSaved} />
+        : <span>Por cotizar</span>}</div>}
       {order.discount > 0 && <span><span>Descuento</span><span>−{amount(order.discount)}</span></span>}
       <strong><span>{order.delivery_fee_status === "pending_quote" ? "Importe conocido (sin envío)" : "Total"}</span><span>{amount(order.total)}</span></strong>
       <span><span>Monto cobrado</span><span>{amount(collected)}</span></span>

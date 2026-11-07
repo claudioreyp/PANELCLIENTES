@@ -1,7 +1,7 @@
 import { AgentAttentionPanel } from "../components/AgentAttentionPanel";
 import { OrderDetailContent } from "../components/OrderDetailContent";
 import { OrderCancellationDialog } from "../components/OrderCancellationDialog";
-import { collectibleDeliveryPayment, nextAction } from "../lib/order-detail-model";
+import { collectibleDeliveryPayment, isManualDeliveryPending, nextAction } from "../lib/order-detail-model";
 import {
   ChevronRight,
   History,
@@ -620,6 +620,7 @@ export function OrdersPage() {
 
   function openPayment() {
     if (!branch || !detail || !isCurrentSelection(detail)) return;
+    if (isManualDeliveryPending(detail)) { setToast({ message: "Agrega un costo de envío para poder cobrar.", tone: "error" }); return; }
     const delivery = collectibleDeliveryPayment(detail);
     deliveryPaymentTarget.current = delivery ? { orderId: detail.id, branchId: detail.branch_id, requestId: delivery.id, amount: delivery.amount } : null;
     setPaymentRecovery(false);
@@ -629,6 +630,7 @@ export function OrdersPage() {
 
   async function createPayment(selection: NewOrderCheckoutSelection) {
     if (!detail || !isCurrentSelection(detail) || selection.deferPayment || working || deliveryPaymentProcessing.current) return;
+    if (isManualDeliveryPending(detail)) { setToast({ message: "Agrega un costo de envío para poder cobrar.", tone: "error" }); return; }
     const orderId = detail.id;
     const deliveryTarget = deliveryPaymentTarget.current;
     const isTablePayment = detail.channel === "dine_in" && Boolean(detail.table_id) && !detail.table_released_at;

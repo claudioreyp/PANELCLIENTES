@@ -48,7 +48,7 @@ export function OrderEditDrawer({ order, branch, onClose, onSaved }: { order: Or
   function reportError(message: string) { setError(message); setPreview(false); }
   async function save() {
     if (processing.current || !dirty) return;
-    const validation = validateOrderEdit(draft, changes);
+    const validation = validateOrderEdit(draft, changes, original.source);
     if (validation) { reportError(validation); return; }
     const body = JSON.stringify({ ...changes, expected_version: original.version, expected_total: total });
     intent.current = resolveIdempotentIntent(intent.current, body, body);

@@ -1,5 +1,13 @@
 import type { Order, OrderDetail } from "../types";
-import { isActiveOrderItem } from "./order-presentation";
+import { getDeliveryService, isActiveOrderItem } from "./order-presentation";
+
+export function isManualDelivery(order: Order) {
+  return order.source === "pos" && order.channel === "delivery" && getDeliveryService(order) === "own";
+}
+
+export function isManualDeliveryPending(order: Order) {
+  return isManualDelivery(order) && order.delivery_fee_status === "pending_quote";
+}
 
 export function countLabel(count: number, singular: string, plural: string) {
   return `${count} ${count === 1 ? singular : plural}`;

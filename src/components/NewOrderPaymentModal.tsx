@@ -7,6 +7,7 @@ import {
   Layers3,
   LoaderCircle,
   Smartphone,
+  TriangleAlert,
   X,
 } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
@@ -38,6 +39,7 @@ type NewOrderPaymentModalProps = {
   total: number;
   busy: boolean;
   allowDeferredPayment?: boolean;
+  forceDeferredPayment?: boolean;
   allowCombinedPayment?: boolean;
   allowedMethods?: readonly CheckoutPaymentMethod[];
   recovering?: boolean;
@@ -68,6 +70,7 @@ export function NewOrderPaymentModal({
   total,
   busy,
   allowDeferredPayment = true,
+  forceDeferredPayment = false,
   allowCombinedPayment = true,
   allowedMethods,
   recovering = false,
@@ -81,6 +84,7 @@ export function NewOrderPaymentModal({
   const modeSectionRef = useRef<HTMLElement | null>(null);
   const cashContextRef = useRef<HTMLDivElement | null>(null);
   const [deferPayment, setDeferPayment] = useState(false);
+  const deferred = forceDeferredPayment || deferPayment;
   const [mode, setMode] = useState<CheckoutMode>(null);
   const [tenders, setTenders] = useState<CheckoutTenderValues>({});
   const [submitted, setSubmitted] = useState(false);
@@ -102,7 +106,7 @@ export function NewOrderPaymentModal({
   });
   const cashChange = Math.max(0, Number(tenders.cash || 0) - total);
   const usesCash = mode === "cash" || (mode === "multiple" && Number(tenders.cash || 0) > 0);
-  const showPlanError = !deferPayment
+  const showPlanError = !deferred
     && Boolean(plan.error)
     && (submitted || (mode === "multiple" && plan.error?.includes("exceder el total")));
   const nonCashAllocationError = showPlanError && mode === "multiple" && plan.error?.includes("medios distintos al efectivo");
@@ -115,7 +119,7 @@ export function NewOrderPaymentModal({
   });
 
   useEffect(() => {
-    if (!cashConfigured) return;
+    if (!cashConfigured || forceDeferredPayment) return;
     let active = true;
     setCashLoading(true);
     Promise.all([
@@ -140,7 +144,7 @@ export function NewOrderPaymentModal({
     return () => {
       active = false;
     };
-  }, [branch.id, cashConfigured]);
+  }, [branch.id, cashConfigured, forceDeferredPayment]);
 
   useEffect(() => {
     if (!showPlanError) return;
@@ -172,6 +176,10 @@ export function NewOrderPaymentModal({
   }
 
   function submit() {
+    if (forceDeferredPayment) {
+      onConfirm({ deferPayment: true, mode: null, plan: { payments: [], change: 0, error: null } });
+      return;
+    }
     if (recovering) {
       onConfirm({ deferPayment: false, mode, plan });
       return;
@@ -202,16 +210,16 @@ export function NewOrderPaymentModal({
             <button className="icon-button" aria-label="Cerrar cobro" onClick={onClose} disabled={locked}><X /></button>
             <span id={titleId}>Cobrar al cliente</span>
             <strong><Money value={total} /></strong>
-            <small>{helperText || "Si registras el pago, el pedido se enviará directamente a cocina."}</small>
+            <small>{helperText || (forceDeferredPayment ? "Importe de los productos. El envío está por cotizar." : "Si registras el pago, el pedido se enviará directamente a cocina.")}</small>
           </header>
 
           <div className="new-order-payment-content">
-            {allowDeferredPayment && <label className={`new-order-defer-payment ${deferPayment ? "selected" : ""}`}>
+            {(allowDeferredPayment || forceDeferredPayment) && <label className={`new-order-defer-payment ${deferred ? "selected" : ""}`}>
               <input
-                data-dialog-initial-focus
+                data-dialog-initial-focus={!forceDeferredPayment || undefined}
                 type="checkbox"
-                disabled={locked}
-                checked={deferPayment}
+                disabled={locked || forceDeferredPayment}
+                checked={deferred}
                 onChange={(event) => {
                   setDeferPayment(event.target.checked);
                   setSubmitted(false);
@@ -221,7 +229,9 @@ export function NewOrderPaymentModal({
               <span><strong>Cobrar después</strong><small>Se enviará la comanda a cocina y el pago quedará pendiente.</small></span>
             </label>}
 
-            {!deferPayment && (
+            {forceDeferredPayment && <p className="new-order-delivery-payment-warning" role="note"><TriangleAlert aria-hidden="true" /><span>Agrega un costo de envío para poder cobrar al momento.</span></p>}
+
+            {!deferred && (
               <fieldset className="new-order-payment-methods" disabled={locked}>
                 <legend>Método de pago</legend>
                 {methods.map((method, index) => (
@@ -244,7 +254,7 @@ export function NewOrderPaymentModal({
               </fieldset>
             )}
 
-            {!deferPayment && mode === "cash" && (
+            {!deferred && mode === "cash" && (
               <section ref={modeSectionRef} className="new-order-cash-entry" aria-label="Cobro en efectivo">
                 <label>Cantidad recibida<input type="number" min="0" step="0.01" inputMode="decimal" value={tenders.cash || ""} onChange={(event) => changeTender("cash", event.target.value)} placeholder="S/ 0.00" disabled={locked} aria-invalid={cashAmountError || undefined} aria-describedby={cashAmountError ? errorId : undefined} /></label>
                 {Number(tenders.cash || 0) >= total && <div><span>Cambio</span><strong><Money value={cashChange} /></strong></div>}
@@ -252,7 +262,7 @@ export function NewOrderPaymentModal({
               </section>
             )}
 
-            {!deferPayment && mode === "multiple" && (
+            {!deferred && mode === "multiple" && (
               <section ref={modeSectionRef} className="new-order-split-payment" aria-label="Distribución del cobro">
                 <header><strong>Distribuye el cobro</strong><span>Total <Money value={total} /></span></header>
                 {methods.map((method) => (
@@ -267,7 +277,7 @@ export function NewOrderPaymentModal({
               </section>
             )}
 
-            {!deferPayment && usesCash && (
+            {!deferred && usesCash && (
               <div ref={cashContextRef} className="new-order-cash-context">
                 {cashSessions.length > 1 && !cashLoading && !cashLoadError ? (
                   <label className={`new-order-cash-session ${cashSessionError ? "invalid" : ""}`}>
@@ -303,9 +313,9 @@ export function NewOrderPaymentModal({
 
           <footer className="new-order-payment-actions">
             <button className="button button-secondary" onClick={onClose} disabled={locked}>Cancelar</button>
-            <button className="button button-primary" onClick={submit} disabled={busy || (!recovering && !deferPayment && !mode)}>
+            <button className="button button-primary" data-dialog-initial-focus={forceDeferredPayment || undefined} onClick={submit} disabled={busy || (!recovering && !deferred && !mode)}>
               {busy && <LoaderCircle className="spin" />}
-              {busy ? "Procesando..." : recovering ? "Reintentar confirmación" : deferPayment ? "Enviar a cocina" : <>Cobrar <Money value={total} /></>}
+              {busy ? "Procesando..." : recovering ? "Reintentar confirmación" : forceDeferredPayment ? "Guardar sin cobrar" : deferred ? "Enviar a cocina" : <>Cobrar <Money value={total} /></>}
             </button>
           </footer>
         </section>

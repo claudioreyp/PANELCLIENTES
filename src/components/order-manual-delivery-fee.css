@@ -1,0 +1,14 @@
+.order-manual-delivery-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.order-manual-delivery-fee { position: relative; min-width: 0; }
+.order-manual-fee-trigger { display: inline-flex; align-items: center; gap: 4px; min-height: 36px; padding: 4px 0 4px 8px; border: 0; background: transparent; color: #25824f; font: inherit; font-weight: 600; text-align: right; cursor: pointer; }
+.order-manual-fee-trigger svg { width: 17px; height: 17px; flex-shrink: 0; }
+.order-manual-fee-trigger:hover { color: #1e6c41; text-decoration: underline; text-underline-offset: 3px; }
+.order-manual-fee-trigger:disabled { color: #666; cursor: default; text-decoration: none; }
+.order-manual-fee-trigger:focus-visible { outline: 2px solid #25824f; outline-offset: 3px; border-radius: 7px; }
+.order-manual-fee-popover { position: absolute; z-index: 8; right: 0; bottom: calc(100% + 8px); display: grid; gap: 12px; width: min(310px, calc(100vw - 64px)); padding: 16px; border-radius: 10px; background: #fff; box-shadow: 0 4px 24px #182b2429; color: #262626; font-size: 1rem; text-align: left; }
+.order-manual-fee-popover label { font-weight: 600; }
+.order-manual-fee-popover .order-fee-input input { min-width: 0; width: 100%; border: 0; background: transparent; }
+.order-manual-fee-popover p { margin: 0; color: #a22529; font-size: .875rem; line-height: 1.45; }
+.order-manual-fee-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.order-collection-reason { margin: -8px 0 0; color: #82570d; font-size: .875rem; }
+@media (pointer: coarse) { .order-manual-fee-trigger, .order-manual-fee-actions .button { min-height: 44px; } }
