@@ -108,7 +108,7 @@ it("keeps an uncertain resolution body and key for the retry and rejects double 
 });
 
 it("displays financial history to a dispatcher without offering resolution", async () => {
-  mocked.mockResolvedValue([{ ...item, order_id: 27, kind: "financial_review", status: "acknowledged", resolution_note: "Revisar exceso", resolved_by: "staff-1" }]);
+  mocked.mockImplementation(async path => path.startsWith("/orders/") ? { id: 27, business_id: 2, branch_id: 2, source: "whatsapp_agent" } : [{ ...item, order_id: 27, kind: "financial_review", status: "acknowledged", resolution_note: "Revisar exceso", resolved_by: "staff-1" }]);
   render(<AgentAttentionPanel orderId={27} />);
   await screen.findByText(item.summary); openEntry();
   expect(screen.getByText("Revisar exceso", { exact: false })).toBeInTheDocument();
@@ -254,15 +254,15 @@ it.each(["financial_review", "complaint", "notification_review"])("does not offe
   expect(screen.queryByRole("button", { name: "Cerrar aviso" })).not.toBeInTheDocument();
 });
 
-it("keeps permitted dispatcher delivery closure and a compact folio from a verified order", async () => {
-  mocked.mockImplementation(async path => path.startsWith("/orders/") ? { id: 27, business_id: 2, branch_id: 2, source: "pos", folio: 103 } : [{ ...item, order_id: 27, kind: "location_after_dispatch" }]);
+it("keeps permitted dispatcher delivery closure and a compact folio from an agent-created order", async () => {
+  mocked.mockImplementation(async path => path.startsWith("/orders/") ? { id: 27, business_id: 2, branch_id: 2, source: "whatsapp_agent", folio: 103 } : [{ ...item, order_id: 27, kind: "location_after_dispatch" }]);
   render(<AgentAttentionPanel />);
   await screen.findByText("Cambio de ubicación");
   expect(screen.getByText(/Folio #103/)).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Cerrar aviso" })).toBeInTheDocument();
 });
 
-it("filters only manual-order notification reviews, preserving important reviews and agent markers", async () => {
+it("filters all manual-order agent notices without changing the original source after agent intervention", async () => {
   tenant.role = "owner";
   const records = [
     { ...item, id: "manual", order_id: 27, kind: "notification_review", summary: "Aviso manual antiguo" },
@@ -276,31 +276,78 @@ it("filters only manual-order notification reviews, preserving important reviews
     return { id, business_id: 2, branch_id: 2, folio: id, source: id === 28 ? "whatsapp_agent" : "pos", ...(id === 29 ? { recent_modification: { source: "agent" } } : {}) };
   });
   render(<AgentAttentionPanel />);
-  await screen.findByText("Avisos pendientes (3)");
+  await screen.findByText("Avisos pendientes (1)");
   expect(screen.queryByText("Aviso manual antiguo")).not.toBeInTheDocument();
-  expect(screen.getByText("Comprobar pago")).toBeInTheDocument();
+  expect(screen.queryByText("Comprobar pago")).not.toBeInTheDocument();
   expect(screen.getByText("Aviso de pedido WhatsApp")).toBeInTheDocument();
-  expect(screen.getByText("Aviso de pedido modificado")).toBeInTheDocument();
+  expect(screen.queryByText("Aviso de pedido modificado")).not.toBeInTheDocument();
   expect(mocked.mock.calls.filter(([path]) => path === "/orders/27")).toHaveLength(1);
   expect(mocked.mock.calls.every(([, options]) => !options?.method)).toBe(true);
 });
 
-it.each(["unavailable", "wrong-scope", "missing-source", "agent-addition"])("keeps notification review when the manual-only classification is unsafe: %s", async state => {
+it.each(["unavailable", "wrong-scope"])("does not publish an incomplete or unscoped classification: %s", async state => {
   mocked.mockImplementation(async path => {
     if (path.startsWith("/agent-attention")) return [{ ...item, order_id: 27, kind: "notification_review" }];
     if (state === "unavailable") throw new Error("read unavailable");
-    return { id: 27, business_id: 2, branch_id: state === "wrong-scope" ? 3 : 2, ...(state === "missing-source" ? {} : { source: "pos" }), ...(state === "agent-addition" ? { recent_agent_addition: { source: "agent" } } : {}) };
+    return { id: 27, business_id: 2, branch_id: state === "wrong-scope" ? 3 : 2, source: "pos" };
   });
   render(<AgentAttentionPanel />);
-  await screen.findByText("Avisos pendientes (1)");
-  expect(screen.getByText(item.summary)).toBeInTheDocument();
+  await screen.findByRole("alert");
+  expect(screen.queryByText(item.summary)).not.toBeInTheDocument();
 });
 
-it("retains all per-order history even for a manual-order technical notification", async () => {
+it("does not expose manual-order technical history as an agent review inside the order", async () => {
   mocked.mockImplementation(async path => path.startsWith("/orders/") ? { id: 27, business_id: 2, branch_id: 2, source: "pos" } : [{ ...item, order_id: 27, kind: "notification_review", status: "resolved" }]);
   render(<AgentAttentionPanel orderId={27} />);
-  await screen.findByText(item.summary);
-  expect(screen.getByText("Revisiones del pedido")).toBeInTheDocument();
+  await waitFor(() => expect(mocked).toHaveBeenCalledTimes(2));
+  expect(screen.queryByText(item.summary)).not.toBeInTheDocument();
+  expect(screen.queryByText("Revisiones del pedido")).not.toBeInTheDocument();
+});
+
+it.each(["pos", "manual", "public_store", "integration", "unknown"])("hides every agent notice for non-agent source %s in both views", async source => {
+  tenant.role = "owner";
+  mocked.mockImplementation(async path => path.startsWith("/orders/")
+    ? { id: 27, business_id: 2, branch_id: 2, source, recent_modification: { source: "agent" }, recent_agent_addition: { source: "agent" } }
+    : [{ ...item, order_id: 27, kind: "financial_review" }]);
+  const view = render(<AgentAttentionPanel />);
+  await waitFor(() => expect(mocked).toHaveBeenCalledTimes(2));
+  expect(screen.queryByText(item.summary)).not.toBeInTheDocument();
+  view.rerender(<AgentAttentionPanel orderId={27} />);
+  await waitFor(() => expect(mocked).toHaveBeenCalledTimes(3));
+  expect(screen.queryByText(item.summary)).not.toBeInTheDocument();
+  expect(mocked.mock.calls.every(([, options]) => !options?.method)).toBe(true);
+});
+
+it("identifies a linked notice by folio and provider contact before expanding either view", async () => {
+  mocked.mockImplementation(async path => path.startsWith("/orders/")
+    ? { id: 27, business_id: 2, branch_id: 2, source: "whatsapp_agent", folio: 305 }
+    : [{ ...item, order_id: 27, kind: "fulfillment_change", sender: "7499818262692@lid", contact_display_name: "Ana", contact_phone: "51900000000" }]);
+  const view = render(<AgentAttentionPanel />);
+  await screen.findByText(/Folio #305/);
+  expect(screen.getByText("WhatsApp: Ana · +51900000000")).toBeVisible();
+  expect(document.body.textContent).not.toContain("@lid");
+  view.rerender(<AgentAttentionPanel orderId={27} />);
+  await screen.findByText("Revisiones del pedido");
+  expect(screen.getByText(/Folio #305/)).toBeVisible();
+  expect(screen.getByText("WhatsApp: Ana · +51900000000")).toBeVisible();
+});
+
+it("keeps the read-only contact projection when a resolution response has only legacy fields", async () => {
+  tenant.role = "owner";
+  const linked = { ...item, order_id: 27, sender: "7499818262692@lid", contact_display_name: "Ana", contact_phone: null };
+  let reads = 0;
+  mocked.mockImplementation(async (path, options) => {
+    if (path.startsWith("/orders/")) return { id: 27, business_id: 2, branch_id: 2, source: "whatsapp_agent" };
+    if (options?.method === "POST") return { ...item, order_id: 27, sender: linked.sender, version: 5, status: "resolved" };
+    if (++reads > 1) throw new TypeError("refresh unavailable");
+    return [linked];
+  });
+  render(<AgentAttentionPanel orderId={27} />);
+  await screen.findByText("WhatsApp: Ana");
+  fireEvent.click(screen.getByRole("button", { name: "Cerrar aviso" }));
+  await screen.findByText("Resuelta");
+  expect(screen.getByText("WhatsApp: Ana")).toBeVisible();
+  expect(document.body.textContent).not.toContain("@lid");
 });
 
 it("hides only previous technical notices and keeps every important, unknown or undated review", async () => {

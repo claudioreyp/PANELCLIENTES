@@ -10,6 +10,7 @@ import { useBranchRealtime } from "../lib/hooks";
 import { formatPosDate } from "../lib/pos-dates";
 import { posTimestampDay } from "../lib/pos-day";
 import { usePosDay } from "../lib/use-pos-day";
+import { attentionContact, isAgentAttentionOrder } from "../lib/agent-attention-presentation";
 import type { AgentAttention, Order } from "../types";
 import "./agent-attention.css";
 
@@ -29,11 +30,6 @@ type ResolutionIntent = { key: string; body: string; close?: boolean };
 function titleFor(item: AgentAttention) {
   if (item.details.source === "agent_model_usage") return "Revisar conexión o consumo";
   return titles[item.kind] || "Revisión pendiente";
-}
-
-function isManualNotification({ item, order }: AttentionRow) {
-  return item.kind === "notification_review" && order?.source === "pos"
-    && order.recent_modification?.source !== "agent" && order.recent_agent_addition?.source !== "agent";
 }
 
 function AttentionReceipt({ attentionId, mediaRef, index }: { attentionId: string; mediaRef: string; index: number }) {
@@ -120,12 +116,12 @@ export function AgentAttentionEntry({ item, mayResolve, onSaved, onOpenOrder, or
   const currentConfirmation = confirmed && confirmed.version >= item.version ? confirmed : null;
   if (currentConfirmation?.status === "resolved" && !keepResolved) return null;
   const status = currentConfirmation?.status || item.status;
+  const contact = attentionContact(item, order);
   return <article className={`agent-attention-entry attention-${item.kind}`}>
     <details>
-    <summary><AlertTriangle aria-hidden="true" /><span className="agent-attention-summary"><strong>{titleFor(item)}</strong><small>{Number.isInteger(order?.folio) && Number(order?.folio) > 0 ? `Folio #${order!.folio} · ` : item.order_id === null ? "Sin pedido registrado · " : ""}<time dateTime={item.created_at}>{formatPosDate(item.created_at, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}</time><span className="agent-attention-status">{labels[status]}</span></small></span><ChevronDown className="agent-attention-chevron" aria-hidden="true" /></summary>
+    <summary><AlertTriangle aria-hidden="true" /><span className="agent-attention-summary"><strong>{titleFor(item)}</strong><small>{Number.isInteger(order?.folio) && Number(order?.folio) > 0 ? `Folio #${order!.folio} · ` : item.order_id === null ? "Sin pedido registrado · " : ""}<time dateTime={item.created_at}>{formatPosDate(item.created_at, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}</time><span className="agent-attention-status">{labels[status]}</span></small><small>WhatsApp: {contact}</small></span><ChevronDown className="agent-attention-chevron" aria-hidden="true" /></summary>
     <div className="agent-attention-content">
       <p className="agent-attention-description">{item.summary}</p>
-      <p><time dateTime={item.created_at}>{formatPosDate(item.created_at, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}</time>{item.sender && <> · WhatsApp: {item.sender}</>}</p>
       {item.kind === "financial_review" && item.details.kind === "original_payment_method_change" && fromMethod && requestedMethod && <p>Cambio solicitado: de <strong>{fromMethod}</strong> a <strong>{requestedMethod}</strong>.</p>}
       {item.kind === "financial_review" && <p>Esta revisión no modifica cobros, saldos ni devoluciones. Comprueba los importes en el pedido.</p>}
       {item.kind === "late_payment_receipt" && <p>Comprobante recibido fuera del horario de atención. No hay pedido ni pago aprobado. Revisar esta incidencia no registra un pedido ni confirma el pago.</p>}
@@ -185,7 +181,8 @@ export function AgentAttentionPanel({ orderId, onOpenOrder }: { orderId?: number
     const orders = new Map<number, Order | null>();
     const ids = [...new Set(records.flatMap(item => item.order_id === null ? [] : [item.order_id]))];
     // Share one scoped, short-lived order read per unique id, including folio.
-    // A failed or incomplete read keeps the notice visible instead of guessing.
+    // Publish only a complete, scoped read. A failed refresh retains the last
+    // complete notice list rather than changing the origin classification.
     let next = 0;
     await Promise.all(Array.from({ length: Math.min(4, ids.length) }, async () => {
       while (next < ids.length) {
@@ -197,11 +194,12 @@ export function AgentAttentionPanel({ orderId, onOpenOrder }: { orderId?: number
           && order.business_id === context?.business.id ? order : null);
       }
     }));
+    if (ids.some(id => !orders.get(id))) throw new Error("No se pudo verificar el origen de todos los pedidos. Se conserva la última consulta completa.");
     return records.map(item => ({ item, order: item.order_id === null ? null : orders.get(item.order_id) || null }));
   }, 30000, enabled);
   useBranchRealtime(enabled ? branch?.id : undefined, () => { void query.refresh(); });
   if (!enabled) return null;
-  const allRows = (query.data || []).filter(row => orderId || !isManualNotification(row));
+  const allRows = (query.data || []).filter(({ item, order }) => item.order_id === null || isAgentAttentionOrder(order));
   const isPrevious = ({ item }: AttentionRow) => {
     const itemDay = posTimestampDay(item.created_at);
     return !orderId && item.kind === "notification_review" && item.details.source !== "agent_model_usage"
@@ -210,7 +208,7 @@ export function AgentAttentionPanel({ orderId, onOpenOrder }: { orderId?: number
   const previousCount = allRows.filter(isPrevious).length;
   const rows = showPrevious ? allRows : allRows.filter(row => !isPrevious(row));
   if (!allRows.length && !query.error) return null;
-  const onResolved = (saved: AgentAttention) => query.setData(current => current?.flatMap(row => row.item.id !== saved.id || row.item.version > saved.version ? [row] : orderId ? [{ ...row, item: saved }] : []) || null);
+  const onResolved = (saved: AgentAttention) => query.setData(current => current?.flatMap(row => row.item.id !== saved.id || row.item.version > saved.version ? [row] : orderId ? [{ ...row, item: { ...row.item, ...saved } }] : []) || null);
   return <section className={`agent-attention-panel${orderId ? "" : " agent-attention-overview"}`} tabIndex={orderId ? undefined : 0} aria-label={orderId ? "Revisiones del agente de este pedido" : "Atención del agente"}>
     <div className="agent-attention-heading">
       <h3>{orderId ? "Revisiones del pedido" : `Avisos pendientes (${rows.length})`}</h3>

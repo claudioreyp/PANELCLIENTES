@@ -332,6 +332,8 @@ export type AgentAttention = {
   kind: string;
   summary: string;
   sender: string;
+  contact_display_name?: string | null;
+  contact_phone?: string | null;
   details: Record<string, unknown>;
   status: "pending" | "acknowledged" | "resolved";
   version: number;
