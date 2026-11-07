@@ -1,7 +1,7 @@
 import { AgentAttentionPanel } from "../components/AgentAttentionPanel";
 import { OrderDetailContent } from "../components/OrderDetailContent";
 import { OrderCancellationDialog } from "../components/OrderCancellationDialog";
-import { nextAction } from "../lib/order-detail-model";
+import { collectibleDeliveryPayment, nextAction } from "../lib/order-detail-model";
 import {
   ChevronRight,
   History,
@@ -111,6 +111,7 @@ export function OrdersPage() {
     if (detail.id === Number(orderId) && evidence && ["paid", "rejected", "superseded"].includes(evidence.status)) reviewIntent.current = null;
   }, [detail]);
   const [paymentOpen, setPaymentOpen] = useState(false);
+  const [paymentRecovery, setPaymentRecovery] = useState(false);
   const [selectedTable, setSelectedTable] = useState<RestaurantTable | null>(null);
   const [tableCheckoutMode, setTableCheckoutMode] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
@@ -135,6 +136,8 @@ export function OrdersPage() {
   const reopenCheckoutIntent = useRef<IdempotentIntent | null>(null);
   const tablePaymentIntent = useRef<IdempotentIntent | null>(null);
   const paymentIntents = useRef(new Map<string, string>());
+  const deliveryPaymentTarget = useRef<{ orderId: number; branchId: number; requestId: string; amount: number; intent?: IdempotentIntent } | null>(null);
+  const deliveryPaymentProcessing = useRef(false);
   const openTableIntents = useRef(new Map<number, IdempotentIntent>());
   selectedIdRef.current = selectedId;
   branchIdRef.current = branch?.id;
@@ -262,6 +265,9 @@ export function OrdersPage() {
     reopenCheckoutIntent.current = null;
     tablePaymentIntent.current = null;
     paymentIntents.current.clear();
+    deliveryPaymentTarget.current = null;
+    deliveryPaymentProcessing.current = false;
+    setPaymentRecovery(false);
   }, [selectedId, branch?.id]);
 
   useEffect(() => {
@@ -613,18 +619,51 @@ export function OrdersPage() {
   }
 
   function openPayment() {
-    if (!branch) return;
+    if (!branch || !detail || !isCurrentSelection(detail)) return;
+    const delivery = collectibleDeliveryPayment(detail);
+    deliveryPaymentTarget.current = delivery ? { orderId: detail.id, branchId: detail.branch_id, requestId: delivery.id, amount: delivery.amount } : null;
+    setPaymentRecovery(false);
     setToast(null);
     setPaymentOpen(true);
   }
 
   async function createPayment(selection: NewOrderCheckoutSelection) {
-    if (!detail || !isCurrentSelection(detail) || selection.deferPayment || working) return;
+    if (!detail || !isCurrentSelection(detail) || selection.deferPayment || working || deliveryPaymentProcessing.current) return;
     const orderId = detail.id;
+    const deliveryTarget = deliveryPaymentTarget.current;
     const isTablePayment = detail.channel === "dine_in" && Boolean(detail.table_id) && !detail.table_released_at;
     const shouldSendToKitchen = ["draft", "pending_confirmation"].includes(detail.status);
     setWorking(true);
     try {
+      if (deliveryTarget) {
+        if (deliveryTarget.orderId !== orderId || deliveryTarget.branchId !== detail.branch_id) return;
+        if (!deliveryTarget.intent) {
+          const current = collectibleDeliveryPayment(detail);
+          const payment = selection.plan.payments[0];
+          if (!current || current.id !== deliveryTarget.requestId || current.amount !== deliveryTarget.amount
+            || selection.plan.payments.length !== 1 || !payment || !["cash", "yape"].includes(payment.method)
+            || Math.abs(payment.amount - deliveryTarget.amount) >= 0.005) {
+            setToast({ message: "Actualiza el pedido antes de cobrar el saldo del envío con efectivo o Yape.", tone: "error" });
+            return;
+          }
+          const note = payment.method === "cash" && payment.cashReceived != null
+            ? `Cobro del envío recibido del repartidor. Efectivo recibido: ${payment.cashReceived.toFixed(2)} PEN. Cambio: ${selection.plan.change.toFixed(2)} PEN.`
+            : "Cobro del envío verificado e ingresado en caja.";
+          deliveryTarget.intent = resolveIdempotentIntent(null, `${orderId}:delivery:${current.id}`, JSON.stringify({
+            method: payment.method, amount: payment.amount, cash_session_id: payment.cashSessionId || null,
+            note, expected_version: detail.version, payment_request_id: current.id,
+          }));
+        }
+        deliveryPaymentProcessing.current = true;
+        await api(`/orders/${orderId}/payments`, { method: "POST", idempotencyKey: deliveryTarget.intent.key, body: deliveryTarget.intent.body });
+        if (!isCurrentSelection(detail)) return;
+        deliveryPaymentTarget.current = null;
+        setPaymentRecovery(false);
+        setPaymentOpen(false);
+        await refreshOrder(orderId);
+        if (isCurrentSelection(detail)) setToast({ message: "Cobro del envío registrado en caja.", tone: "success" });
+        return;
+      }
       if (isTablePayment) {
         let target = detail;
         if (shouldSendToKitchen) {
@@ -698,6 +737,13 @@ export function OrdersPage() {
       setToast({ message: shouldSendToKitchen ? "Pago registrado y pedido enviado a cocina." : "Pago registrado correctamente.", tone: "success" });
     } catch (caught) {
       if (!isCurrentSelection(detail)) return;
+      if (deliveryTarget?.intent && deliveryPaymentTarget.current === deliveryTarget && !isDefinitiveClientError(caught)) {
+        setPaymentRecovery(true);
+        setToast({ message: "No pudimos confirmar el cobro. Reintenta la confirmación para recuperar el mismo pago sin duplicarlo.", tone: "error" });
+        return;
+      }
+      deliveryPaymentTarget.current = null;
+      setPaymentRecovery(false);
       if (isDefinitiveClientError(caught)) {
         paymentIntents.current.clear();
         confirmIntent.current = null;
@@ -715,7 +761,10 @@ export function OrdersPage() {
         tone: "error",
       });
     } finally {
-      if (isCurrentSelection(detail)) setWorking(false);
+      if (isCurrentSelection(detail)) {
+        deliveryPaymentProcessing.current = false;
+        setWorking(false);
+      }
     }
   }
 
@@ -959,7 +1008,7 @@ export function OrdersPage() {
       {appendProductsOpen && detail && catalogResource.data && <OrderProductPicker title={selectedTable ? `Agregar productos a ${selectedTable.name}` : "Agregar productos al pedido"} catalog={catalogResource.data} channel={orderChannelForPicker(detail.channel)} onClose={() => setAppendProductsOpen(false)} onSave={(lines) => void appendProducts(lines)} />}
       {editingTicket && detail && catalogResource.data && <OrderCommandEditor ticket={editingTicket} items={editableTicketItems(detail, editingTicket)} activeItemCount={detail.items.filter(isActiveOrderItem).length} catalog={catalogResource.data} serviceChannel={orderServiceChannel(detail)} busy={working} onClose={() => setEditingTicket(null)} onSave={(operations) => void saveItemRevisions(operations)} />}
       {editingOrder && branch && editingOrder.branch_id === branch.id && <OrderEditDrawer key={`${branch.id}:${editingOrder.id}`} order={editingOrder} branch={branch} onClose={() => setEditingOrder(null)} onSaved={finishOrderEdit} />}
-      {paymentOpen && detail && branch && <NewOrderPaymentModal branch={branch} total={detail.remaining_amount > 0 ? detail.remaining_amount : detail.total} busy={working} allowDeferredPayment={false} helperText={detail.channel === "dine_in" && detail.table_id && !detail.table_released_at ? "Al cobrar, la mesa quedará libre de inmediato aunque cocina siga preparando sus comandas." : ["draft", "pending_confirmation"].includes(detail.status) ? "Al registrar el pago, el pedido se enviará directamente a cocina." : "El pago quedará registrado en este pedido."} onClose={() => setPaymentOpen(false)} onConfirm={(selection) => void createPayment(selection)} />}
+      {paymentOpen && detail && branch && <NewOrderPaymentModal branch={branch} total={deliveryPaymentTarget.current?.amount ?? (detail.remaining_amount > 0 ? detail.remaining_amount : detail.total)} busy={working} allowDeferredPayment={false} allowCombinedPayment={!deliveryPaymentTarget.current} allowedMethods={deliveryPaymentTarget.current ? ["cash", "yape"] : undefined} recovering={paymentRecovery} helperText={paymentRecovery ? "El resultado está pendiente de confirmar. Reintenta para recuperar el mismo cobro." : deliveryPaymentTarget.current ? "Registra el dinero del envío recibido por caja. El pago de los productos se conserva." : detail.channel === "dine_in" && detail.table_id && !detail.table_released_at ? "Al cobrar, la mesa quedará libre de inmediato aunque cocina siga preparando sus comandas." : ["draft", "pending_confirmation"].includes(detail.status) ? "Al registrar el pago, el pedido se enviará directamente a cocina." : "El pago quedará registrado en este pedido."} onClose={() => setPaymentOpen(false)} onConfirm={(selection) => void createPayment(selection)} />}
       {transferOpen && <Modal title="Transferir pedido" className="table-transfer-modal" onClose={() => !working && setTransferOpen(false)}>{transferLoading ? <LoadingState label="Buscando mesas libres..." /> : transferTables.length ? <div className="table-transfer-options"><p>Selecciona la mesa libre que recibirá esta cuenta.</p>{transferTables.map((table) => <button key={table.id} type="button" disabled={working} onClick={() => void transferOrder(table)}><span><strong>{table.name}</strong><small>Capacidad para {table.capacity} personas</small></span><ChevronRight /></button>)}</div> : <EmptyState title="No hay mesas libres" detail="Libera otra mesa o vuelve a intentarlo cuando esté disponible." />}</Modal>}
       {toast && <Toast {...toast} durationMs={toast.tone === "success" ? 4500 : undefined} onDismiss={() => setToast(null)} />}
     </div>

@@ -29,7 +29,7 @@ function makeOrder(id: number, base: number, status: string): OrderDetail {
   } as unknown as OrderDetail;
 }
 
-async function prepare(page: Page, order: OrderDetail, lostReview = false) {
+async function prepare(page: Page, order: OrderDetail, lostReview = false, lostPayment = false) {
   const branch = { id: 1, business_id: 1, name: "Sucursal principal", active: true,
     accepted_payment_methods: ["cash", "yape"], delivery_enabled: true, takeaway_enabled: true, opening_hours: {} };
   const writes: { path: string; body: Record<string, unknown>; key?: string }[] = [];
@@ -91,6 +91,7 @@ async function prepare(page: Page, order: OrderDetail, lostReview = false) {
       if (body.payment_request_id) Object.assign(order.payment_requests![0], { status: "paid", collection_pending_with_courier: false });
       const response = { order, payment: order.payments.at(-1) };
       if (key) replays.set(key, structuredClone(response));
+      if (lostPayment && !dropped) { dropped = true; return reply({ detail: "Synthetic lost payment response after commit" }, 503); }
       return reply(response);
     }
     if (path === "/payment-evidence/60/review") {
@@ -133,11 +134,15 @@ test("dispatch and courier collection preserve the balance until the staff recor
   expect(f.order.paid_amount).toBe(15); expect(f.order.remaining_amount).toBe(6);
   expect(f.writes[1].body).toMatchObject({ status: "delivered", delivery_collection: "courier_pending" });
   await page.screenshot({ path: `e2e/test-output/delivery-yape/${info.project.name}-courier-pending.png`, fullPage: true });
-  await f.dialog.getByRole("button", { name: "Registrar cobro del envío", exact: true }).click();
-  const payment = page.getByRole("dialog", { name: "Registrar cobro del envío", exact: true });
-  await payment.getByRole("combobox", { name: "Forma de cobro", exact: true }).selectOption("cash");
-  await payment.getByLabel("Nota del cobro", { exact: true }).fill("Repartidor entregó los S/ 6 en caja.");
-  await payment.getByRole("button", { name: /Registrar cobro|Confirmar cobro/, exact: false }).click();
+  await expect(f.dialog.getByRole("button", { name: "Registrar cobro del envío", exact: true })).toHaveCount(0);
+  await f.dialog.getByRole("button", { name: "Cobrar 6 S/", exact: true }).click();
+  const payment = page.getByRole("dialog", { name: "Cobrar al cliente", exact: true });
+  await expect(payment.getByRole("radio", { name: /Múltiples/ })).toHaveCount(0);
+  await payment.getByRole("radio", { name: /^Efectivo/ }).check();
+  await payment.getByLabel("Cantidad recibida", { exact: true }).fill("6");
+  await expect(payment.getByText("Caja de prueba", { exact: true })).toBeVisible();
+  await page.screenshot({ path: `e2e/test-output/delivery-yape/${info.project.name}-regular-cash-payment.png`, fullPage: true, animations: "disabled" });
+  await payment.getByRole("button", { name: /^Cobrar / }).click();
   await expect(payment).toBeHidden();
   await expect(f.dialog.getByText("Yape pendiente de recibir", { exact: false })).toHaveCount(0);
   const payments = f.writes.filter(write => write.path.endsWith("/payments"));
@@ -198,5 +203,29 @@ test("an unresolved original receipt still blocks dispatch", async ({ page }) =>
   const f = await prepare(page, order);
   await expect(f.dialog.getByRole("button", { name: "Despachar delivery", exact: true })).toBeDisabled();
   expect(f.writes).toHaveLength(0);
+  await noExternalEffects(page, f.forbidden);
+});
+
+
+test("the regular checkout recovers the same shipping payment after a lost response", async ({ page }) => {
+  const order = makeOrder(5, 15, "delivered");
+  order.payment_requests![0].collection_pending_with_courier = true;
+  const f = await prepare(page, order, false, true);
+  await f.dialog.getByRole("button", { name: "Cobrar 6 S/", exact: true }).click();
+  const payment = page.getByRole("dialog", { name: "Cobrar al cliente", exact: true });
+  await payment.getByRole("radio", { name: /^Efectivo/ }).check();
+  await payment.getByLabel("Cantidad recibida", { exact: true }).fill("10");
+  await expect(payment.getByText("Caja de prueba", { exact: true })).toBeVisible();
+  await payment.getByRole("button", { name: /^Cobrar / }).click();
+  await expect(payment.getByRole("button", { name: "Reintentar confirmación", exact: true })).toBeEnabled();
+  await expect(payment.getByLabel("Cantidad recibida", { exact: true })).toBeDisabled();
+  await expect(payment.getByRole("button", { name: "Cancelar", exact: true })).toBeDisabled();
+  expect(f.order.payments).toHaveLength(2);
+  await payment.getByRole("button", { name: "Reintentar confirmación", exact: true }).click();
+  await expect(payment).toBeHidden();
+  const payments = f.writes.filter(write => write.path.endsWith("/payments"));
+  expect(payments).toHaveLength(2); expect(payments[1]).toEqual(payments[0]);
+  expect(payments[0].body).toMatchObject({ payment_request_id: "shipping-5", amount: 6, method: "cash", expected_version: 2 });
+  expect(f.order.payments).toHaveLength(2); expect(f.order.remaining_amount).toBe(0);
   await noExternalEffects(page, f.forbidden);
 });

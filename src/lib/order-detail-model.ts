@@ -20,6 +20,17 @@ export function pendingDeliveryPayment(order: OrderDetail) {
   return requests.length === 1 && requests[0].status !== "paid" && !requests[0].payment_id ? requests[0] : undefined;
 }
 
+export function collectibleDeliveryPayment(order: OrderDetail) {
+  const request = pendingDeliveryPayment(order);
+  if (!request || order.channel !== "delivery" || order.delivery_fee_status !== "final"
+    || !["cash", "yape"].includes(request.method) || ["cancelled", "closed"].includes(order.status)
+    || hasOpenPaymentEvidence(order) || Math.abs(order.remaining_amount - request.amount) >= 0.005) return undefined;
+  const evidence = order.payment_evidences || (order.payment_evidence ? [order.payment_evidence] : []);
+  if (["agent", "n8n", "whatsapp", "whatsapp_agent"].includes(order.source) && order.payment_method === "yape"
+    && !evidence.some(item => !item.payment_request_id && item.status === "paid")) return undefined;
+  return request;
+}
+
 type OrderNextAction = { label: string; kind: string; disabledReason?: string; requiresCourierCollection?: boolean };
 
 export function nextAction(order: OrderDetail): OrderNextAction | null {

@@ -38,6 +38,9 @@ type NewOrderPaymentModalProps = {
   total: number;
   busy: boolean;
   allowDeferredPayment?: boolean;
+  allowCombinedPayment?: boolean;
+  allowedMethods?: readonly CheckoutPaymentMethod[];
+  recovering?: boolean;
   helperText?: string;
   onClose: () => void;
   onConfirm: (selection: NewOrderCheckoutSelection) => void;
@@ -65,6 +68,9 @@ export function NewOrderPaymentModal({
   total,
   busy,
   allowDeferredPayment = true,
+  allowCombinedPayment = true,
+  allowedMethods,
+  recovering = false,
   helperText,
   onClose,
   onConfirm,
@@ -83,9 +89,10 @@ export function NewOrderPaymentModal({
   const [registers, setRegisters] = useState<Register[]>([]);
   const [cashSessions, setCashSessions] = useState<CashSession[]>([]);
   const [cashSessionId, setCashSessionId] = useState<number | null>(null);
-  const methods = normalizeCheckoutPaymentMethods(branch.accepted_payment_methods || []);
-  const cashConfigured = (branch.accepted_payment_methods || []).some((method) => method.trim().toLowerCase() === "cash");
-  const canCombine = methods.length > 1;
+  const methods = normalizeCheckoutPaymentMethods(branch.accepted_payment_methods || []).filter(method => !allowedMethods || allowedMethods.includes(method));
+  const cashConfigured = methods.includes("cash");
+  const canCombine = allowCombinedPayment && methods.length > 1;
+  const locked = busy || recovering;
   const plan = buildCheckoutPaymentPlan({
     total,
     mode,
@@ -104,7 +111,7 @@ export function NewOrderPaymentModal({
   const cashAmountError = cashAllocationError && !cashSessionError;
 
   const surfaceRef = useDialogSurface(() => {
-    if (!busy) onClose();
+    if (!locked) onClose();
   });
 
   useEffect(() => {
@@ -165,6 +172,10 @@ export function NewOrderPaymentModal({
   }
 
   function submit() {
+    if (recovering) {
+      onConfirm({ deferPayment: false, mode, plan });
+      return;
+    }
     if (deferPayment) {
       onConfirm({ deferPayment: true, mode: null, plan: { payments: [], change: 0, error: null } });
       return;
@@ -185,10 +196,10 @@ export function NewOrderPaymentModal({
 
   return (
     <DialogPortal>
-      <div className="new-order-payment-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && !busy && onClose()}>
+      <div className="new-order-payment-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && !locked && onClose()}>
         <section ref={surfaceRef} className="new-order-payment-modal" role="dialog" aria-modal="true" aria-labelledby={titleId} aria-busy={busy} tabIndex={-1}>
           <header className="new-order-payment-summary">
-            <button className="icon-button" aria-label="Cerrar cobro" onClick={onClose} disabled={busy}><X /></button>
+            <button className="icon-button" aria-label="Cerrar cobro" onClick={onClose} disabled={locked}><X /></button>
             <span id={titleId}>Cobrar al cliente</span>
             <strong><Money value={total} /></strong>
             <small>{helperText || "Si registras el pago, el pedido se enviará directamente a cocina."}</small>
@@ -199,7 +210,7 @@ export function NewOrderPaymentModal({
               <input
                 data-dialog-initial-focus
                 type="checkbox"
-                disabled={busy}
+                disabled={locked}
                 checked={deferPayment}
                 onChange={(event) => {
                   setDeferPayment(event.target.checked);
@@ -211,7 +222,7 @@ export function NewOrderPaymentModal({
             </label>}
 
             {!deferPayment && (
-              <fieldset className="new-order-payment-methods" disabled={busy}>
+              <fieldset className="new-order-payment-methods" disabled={locked}>
                 <legend>Método de pago</legend>
                 {methods.map((method, index) => (
                   <label key={method} className={mode === method ? "selected" : ""}>
@@ -235,7 +246,7 @@ export function NewOrderPaymentModal({
 
             {!deferPayment && mode === "cash" && (
               <section ref={modeSectionRef} className="new-order-cash-entry" aria-label="Cobro en efectivo">
-                <label>Cantidad recibida<input type="number" min="0" step="0.01" inputMode="decimal" value={tenders.cash || ""} onChange={(event) => changeTender("cash", event.target.value)} placeholder="S/ 0.00" disabled={busy} aria-invalid={cashAmountError || undefined} aria-describedby={cashAmountError ? errorId : undefined} /></label>
+                <label>Cantidad recibida<input type="number" min="0" step="0.01" inputMode="decimal" value={tenders.cash || ""} onChange={(event) => changeTender("cash", event.target.value)} placeholder="S/ 0.00" disabled={locked} aria-invalid={cashAmountError || undefined} aria-describedby={cashAmountError ? errorId : undefined} /></label>
                 {Number(tenders.cash || 0) >= total && <div><span>Cambio</span><strong><Money value={cashChange} /></strong></div>}
                 {showPlanError && <p ref={errorRef} id={errorId} className="new-order-payment-error" role="alert" tabIndex={-1}>{plan.error}</p>}
               </section>
@@ -248,7 +259,7 @@ export function NewOrderPaymentModal({
                   <label key={method} className={(method === "cash" ? cashAmountError : nonCashAllocationError) ? "invalid" : ""}>
                     <span className={`new-order-payment-method-icon method-${method}`}><MethodIcon method={method} /></span>
                     <span>{method === "cash" ? "Recibido en efectivo" : `Cobrado con ${paymentMethodLabel(method)}`}</span>
-                    <input type="number" min="0" step="0.01" inputMode="decimal" value={tenders[method] || ""} onChange={(event) => changeTender(method, event.target.value)} placeholder="S/ 0.00" disabled={busy} aria-invalid={(method === "cash" ? cashAmountError : nonCashAllocationError) || undefined} aria-describedby={(method === "cash" ? cashAmountError : nonCashAllocationError) ? errorId : undefined} />
+                    <input type="number" min="0" step="0.01" inputMode="decimal" value={tenders[method] || ""} onChange={(event) => changeTender(method, event.target.value)} placeholder="S/ 0.00" disabled={locked} aria-invalid={(method === "cash" ? cashAmountError : nonCashAllocationError) || undefined} aria-describedby={(method === "cash" ? cashAmountError : nonCashAllocationError) ? errorId : undefined} />
                   </label>
                 ))}
                 {!plan.error && plan.change > 0 && <div className="new-order-payment-change"><span>Cambio</span><strong><Money value={plan.change} /></strong></div>}
@@ -267,7 +278,7 @@ export function NewOrderPaymentModal({
                         setCashSessionId(Number(event.target.value) || null);
                         setSubmitted(false);
                       }}
-                      disabled={busy}
+                      disabled={locked}
                       aria-invalid={cashSessionError || undefined}
                       aria-describedby={cashSessionError ? errorId : undefined}
                     >
@@ -291,10 +302,10 @@ export function NewOrderPaymentModal({
           </div>
 
           <footer className="new-order-payment-actions">
-            <button className="button button-secondary" onClick={onClose} disabled={busy}>Cancelar</button>
-            <button className="button button-primary" onClick={submit} disabled={busy || (!deferPayment && !mode)}>
+            <button className="button button-secondary" onClick={onClose} disabled={locked}>Cancelar</button>
+            <button className="button button-primary" onClick={submit} disabled={busy || (!recovering && !deferPayment && !mode)}>
               {busy && <LoaderCircle className="spin" />}
-              {busy ? "Procesando..." : deferPayment ? "Enviar a cocina" : <>Cobrar <Money value={total} /></>}
+              {busy ? "Procesando..." : recovering ? "Reintentar confirmación" : deferPayment ? "Enviar a cocina" : <>Cobrar <Money value={total} /></>}
             </button>
           </footer>
         </section>

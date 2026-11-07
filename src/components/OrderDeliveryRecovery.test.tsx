@@ -1,9 +1,10 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { api, apiBlob, ApiError } from "../lib/api";
-import { nextAction } from "../lib/order-detail-model";
+import { api, apiBlob } from "../lib/api";
+import { collectibleDeliveryPayment, nextAction } from "../lib/order-detail-model";
 import type { OrderDetail, PaymentEvidence } from "../types";
 import { OrderDeliveryFee } from "./OrderDeliveryFee";
+import { NewOrderPaymentModal } from "./NewOrderPaymentModal";
 import { OrderEvidenceHistory } from "./OrderEvidenceHistory";
 
 const role = vi.hoisted(() => ({ value: "cashier" }));
@@ -21,6 +22,7 @@ const mistaken: OrderDetail = { ...order, status: "draft", subtotal: 4.5, total:
 
 beforeEach(() => {
   role.value = "cashier";
+  Element.prototype.scrollIntoView = vi.fn();
   vi.mocked(apiBlob).mockResolvedValue(new Blob());
   vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: vi.fn(() => "blob:test"), revokeObjectURL: vi.fn() }));
   vi.spyOn(window, "confirm").mockReturnValue(true);
@@ -52,57 +54,61 @@ describe("physical dispatch is separate from shipping collection", () => {
   });
 });
 
-describe("one explicit shipping payment", () => {
-  it("keeps an uncertain payment immutable and reuses its receipt key and body on retry", async () => {
-    const saved = vi.fn().mockResolvedValue(undefined);
-    vi.mocked(api).mockImplementation(async (path, options) => {
-      if (options?.method === "POST") throw new ApiError("lost response", 503);
-      return path.startsWith("/cash/registers") ? [{ id: 1, name: "Caja principal", active: true }] : [{ id: 4, register_id: 1, status: "open" }] as never;
-    });
-    render(<OrderDeliveryFee order={{ ...order, status: "delivered", payment_requests: [{ ...shipping, collection_pending_with_courier: true }] }} onSaved={saved} />);
+describe("shipping uses the regular POS checkout", () => {
+  it("retains the delivery status without a second collection form", () => {
+    render(<OrderDeliveryFee order={{ ...order, status: "delivered", payment_requests: [{ ...shipping, collection_pending_with_courier: true }] }} onSaved={vi.fn()} />);
     expect(screen.getByText(/Cobro pendiente del repartidor/)).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "Registrar cobro del envío" }));
-    fireEvent.change(screen.getByLabelText("Forma de cobro"), { target: { value: "cash" } });
-    fireEvent.change(screen.getByLabelText("Nota del cobro"), { target: { value: "Repartidor entregó el dinero en caja." } });
-    const submit = screen.getByRole("button", { name: /^Registrar cobro$/ });
-    await waitFor(() => expect(submit).toBeEnabled());
-    fireEvent.click(submit); fireEvent.click(submit);
-    await screen.findByText(/Reintenta esta misma operación/);
-    expect(screen.getByLabelText("Forma de cobro")).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Registrar cobro del envío" })).toBeNull();
+    expect(collectibleDeliveryPayment(order)?.id).toBe(shipping.id);
+  });
+  it("keeps receipts, ambiguous balances and unpaid products out of delivery settlement", () => {
+    expect(collectibleDeliveryPayment({ ...order, remaining_amount: 10 })).toBeUndefined();
+    expect(collectibleDeliveryPayment({ ...order, payment_evidences: [original, deliveryReceipt] })).toBeUndefined();
+    expect(collectibleDeliveryPayment({ ...order, payment_evidences: [] })).toBeUndefined();
+    expect(collectibleDeliveryPayment({ ...order, payment_requests: [shipping, { ...shipping, id: "other" }] })).toBeUndefined();
+    expect(collectibleDeliveryPayment({ ...order, delivery_fee_status: "pending_quote" })).toBeUndefined();
+  });
+  it("uses the existing cash controls and locks the selection while recovering one payment", async () => {
+    const confirm = vi.fn();
+    const props = { branch: { id: 1, accepted_payment_methods: ["cash", "yape", "card"] } as never, total: 6, busy: false,
+      allowDeferredPayment: false, allowCombinedPayment: false, allowedMethods: ["cash", "yape"] as const, onClose: vi.fn(), onConfirm: confirm };
+    const view = render(<NewOrderPaymentModal {...props} />);
+    expect(screen.getByRole("dialog", { name: "Cobrar al cliente" })).toBeVisible();
+    expect(screen.queryByRole("radio", { name: /Tarjeta|Múltiples/ })).toBeNull();
+    fireEvent.click(screen.getByRole("radio", { name: /Efectivo/ }));
+    fireEvent.change(screen.getByLabelText("Cantidad recibida"), { target: { value: "10" } });
+    await screen.findByText("Caja principal");
+    fireEvent.click(screen.getByRole("button", { name: /^Cobrar / }));
+    expect(confirm.mock.calls[0][0].plan).toEqual({ payments: [{ method: "cash", amount: 6, cashReceived: 10, cashSessionId: 4 }], change: 4, error: null });
+    view.rerender(<NewOrderPaymentModal {...props} recovering />);
+    expect(screen.getByLabelText("Cantidad recibida")).toBeDisabled();
     expect(screen.getByRole("button", { name: "Cancelar" })).toBeDisabled();
-    const first = vi.mocked(api).mock.calls.filter(([, options]) => options?.method === "POST")[0];
-    vi.mocked(api).mockResolvedValueOnce({});
-    fireEvent.click(screen.getByRole("button", { name: "Reintentar el mismo cobro" }));
-    await waitFor(() => expect(saved).toHaveBeenCalledOnce());
-    const writes = vi.mocked(api).mock.calls.filter(([, options]) => options?.method === "POST");
-    expect(writes).toHaveLength(2); expect(writes[1]).toEqual(first);
-    expect(JSON.parse(first[1]!.body as string)).toEqual({ method: "cash", amount: 6, cash_session_id: 4, note: "Repartidor entregó el dinero en caja.", expected_version: 2, payment_request_id: "ship-5" });
-    expect(order.paid_amount).toBe(15);
+    expect(screen.getByRole("radio", { name: /Yape/ })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Reintentar confirmación" }));
+    expect(confirm.mock.calls[1][0]).toEqual(confirm.mock.calls[0][0]);
   });
-  it.each(["dispatcher", "waiter", "kitchen"])("does not offer money entry to %s", value => {
-    role.value = value;
-    render(<OrderDeliveryFee order={order} onSaved={vi.fn()} />);
-    expect(screen.queryByRole("button", { name: "Registrar cobro del envío" })).toBeNull();
-  });
-  it("does not collect while another receipt or product balance remains unresolved", () => {
-    const view = render(<OrderDeliveryFee order={{ ...order, remaining_amount: 10 }} onSaved={vi.fn()} />);
-    expect(screen.queryByRole("button", { name: "Registrar cobro del envío" })).toBeNull();
-    view.rerender(<OrderDeliveryFee order={{ ...order, payment_evidences: [original, deliveryReceipt] }} onSaved={vi.fn()} />);
-    expect(screen.getByText(/Comprobante por revisar/)).toBeVisible();
-    expect(screen.queryByRole("button", { name: "Registrar cobro del envío" })).toBeNull();
-  });
-  it("requires a cash-session choice when there are multiple open sessions", async () => {
+  it("recovers the frozen payment when cash sessions arrive after its first submission", async () => {
+    let resolveSessions!: (sessions: unknown) => void;
+    const sessions = new Promise(resolve => { resolveSessions = resolve; });
     vi.mocked(api).mockImplementation(async path => path.startsWith("/cash/registers")
-      ? [{ id: 1, name: "Principal", active: true }, { id: 2, name: "Barra", active: true }]
-      : [{ id: 4, register_id: 1, status: "open" }, { id: 5, register_id: 2, status: "open" }] as never);
-    render(<OrderDeliveryFee order={order} onSaved={vi.fn()} />);
-    fireEvent.click(screen.getByRole("button", { name: "Registrar cobro del envío" }));
-    fireEvent.change(screen.getByLabelText("Forma de cobro"), { target: { value: "yape" } });
-    fireEvent.change(screen.getByLabelText("Nota del cobro"), { target: { value: "Revisado" } });
-    const selector = await screen.findByLabelText("Caja del cobro");
-    expect(screen.getByRole("button", { name: /^Registrar cobro$/ })).toBeDisabled();
-    fireEvent.change(selector, { target: { value: "5" } });
-    expect(screen.getByRole("button", { name: /^Registrar cobro$/ })).toBeEnabled();
+      ? [{ id: 1, name: "Caja principal", active: true }]
+      : sessions as never);
+    const confirm = vi.fn();
+    const props = { branch: { id: 1, accepted_payment_methods: ["cash"] } as never, total: 6, busy: false,
+      allowDeferredPayment: false, onClose: vi.fn(), onConfirm: confirm };
+    const view = render(<NewOrderPaymentModal {...props} />);
+    fireEvent.click(screen.getByRole("radio", { name: /Efectivo/ }));
+    fireEvent.change(screen.getByLabelText("Cantidad recibida"), { target: { value: "6" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Cobrar / }));
+    expect(confirm).toHaveBeenCalledTimes(1);
+    view.rerender(<NewOrderPaymentModal {...props} recovering />);
+    await act(async () => resolveSessions([
+      { id: 4, register_id: 1, status: "open" }, { id: 5, register_id: 1, status: "open" },
+    ]));
+    expect(screen.getByLabelText("Turno de caja")).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Reintentar confirmación" }));
+    expect(confirm).toHaveBeenCalledTimes(2);
+    expect(confirm.mock.calls[1][0].plan.error).toMatch(/Selecciona la caja/);
   });
 });
 
